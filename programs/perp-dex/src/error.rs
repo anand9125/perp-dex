@@ -1,7 +1,10 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum ErrorCode {
+pub enum PerpError {
     #[msg("Custom error message")]
     CustomError,
+    #[msg(" user is unauhtorized")]
+    NotAuthorized
+
 }
