@@ -26,7 +26,8 @@ pub struct MarketState{
     
     pub tick_size :u64,
     pub step_size :u64,
-    pub min_order_notional:u64
+    pub min_order_notional:u64,
+    pub bump:u8
 
 }
 

@@ -4,7 +4,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
 };
 
-use crate::{BidAsk, MarketState, PerpError, QueueState};
+use crate::{BidAsk, MarketState, PerpError, Queue};
 
 #[derive(Accounts)]
 #[instruction(market_symbol: String)]
@@ -43,20 +43,20 @@ pub struct InitializeMarket<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + QueueState::INIT_SPACE,
+        space = 8 + Queue::INIT_SPACE,
         seeds = [b"event_queue", market_symbol.as_bytes()],
         bump
     )]
-    pub event_queue: Account<'info, QueueState>,
+    pub event_queue: Account<'info, Queue>,
 
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + QueueState::INIT_SPACE,
+        space = 8 + Queue::INIT_SPACE,
         seeds = [b"request_queue", market_symbol.as_bytes()],
         bump
     )]
-    pub request_queue: Account<'info, QueueState>,
+    pub request_queue: Account<'info, Queue>,
 
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -79,6 +79,7 @@ impl<'info> InitializeMarket<'info> {
         tick_size: u64,
         step_size: u64,
         min_order_notional: u64,
+        bump:&InitializeMarketBumps
     ) -> Result<()> {
         let market = &mut self.market;
 
@@ -102,6 +103,7 @@ impl<'info> InitializeMarket<'info> {
         market.tick_size = tick_size;
         market.step_size = step_size;
         market.min_order_notional = min_order_notional;
+        market.bump = bump.market;
         
         emit!(MarketInitialized {
             market: market.key(),

@@ -61,7 +61,9 @@ impl<'info> InitializeGlobalConfig<'info> {
         maker_rebate_bps: u16,     
         liq_penalty_bps: u16,     
         oracle_band_bps: u16,     
-        funding_interval_secs: u32 
+        funding_interval_secs: u32 ,
+        bump: &InitializeGlobalConfigBumps
+
     ) -> Result<()> {
         let global_config = &mut self.global_config;
 
@@ -84,8 +86,7 @@ impl<'info> InitializeGlobalConfig<'info> {
         global_config.liq_penalty_bps= liq_penalty_bps;
         global_config.oracle_band_bps = oracle_band_bps;
         global_config.funding_interval_secs = funding_interval_secs;
-
-
+        global_config.bump = bump.global_config;
         Ok(())
     }
 }
