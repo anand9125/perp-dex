@@ -1,0 +1,11 @@
+# slab tree 
+A slab stores nodes in a fixed-size array inside an on-chain account.
+
+
+Benefits:
+
+Fixed memory (so Solana account size is known at init).
+
+Deterministic offsets (works with #[account(zero_copy)]).
+
+Efficient: O(log n) insert/remove (tree path length) and O(1) traversal to next/prev using indices.

@@ -4,7 +4,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
 };
 
-use crate::{BidAsk, MarketState, PerpError, Queue};
+use crate::{BidAsk, MarketState, PerpError, RequestQueue,EventQueue};
 
 #[derive(Accounts)]
 #[instruction(market_symbol: String)]
@@ -41,22 +41,17 @@ pub struct InitializeMarket<'info> {
     pub asks: Account<'info, BidAsk>,
 
     #[account(
-        init_if_needed,
-        payer = authority,
-        space = 8 + Queue::INIT_SPACE,
-        seeds = [b"event_queue", market_symbol.as_bytes()],
+        mut,
+        seeds = [b"request_queue"],
         bump
     )]
-    pub event_queue: Account<'info, Queue>,
-
+    pub request_queue : Account<'info,RequestQueue>,
     #[account(
-        init_if_needed,
-        payer = authority,
-        space = 8 + Queue::INIT_SPACE,
-        seeds = [b"request_queue", market_symbol.as_bytes()],
+        mut,
+        seeds = [b"event_queue"],
         bump
     )]
-    pub request_queue: Account<'info, Queue>,
+    pub event_queue : Account<'info,EventQueue>,
 
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -71,13 +66,14 @@ impl<'info> InitializeMarket<'info> {
         last_oracle_price: i64,
         last_oracle_ts: i64,
         im_bps: u16,
+        mm_bps : u16,
         taker_fee_bps: u16,
         oracle_band_bps: u16,
         cum_funding_long: i64,
         cum_funding_short: i64,
         last_funding_ts: i64,
-        tick_size: u64,
-        step_size: u64,
+        tick_size: u16,
+        step_size: u8,
         min_order_notional: u64,
         bump:&InitializeMarketBumps
     ) -> Result<()> {
@@ -94,7 +90,12 @@ impl<'info> InitializeMarket<'info> {
         market.oracle_pubkey = oracle_pubkey;
         market.last_oracle_price = last_oracle_price;
         market.last_oracle_ts = last_oracle_ts;
+        market.bid = self.bids.key();
+        market.asks = self.asks.key();
+        market.event_queue = self.event_queue.key();
+        market.request_queue = self.request_queue.key();
         market.im_bps = im_bps;
+        market.mm_bps = mm_bps;
         market.taker_fee_bps = taker_fee_bps;
         market.oracle_band_bps = oracle_band_bps;
         market.cum_funding_long = cum_funding_long;

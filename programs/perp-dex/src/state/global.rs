@@ -7,6 +7,8 @@ pub struct GlobalConfig{
     pub vault_quote:Pubkey,
     pub insurance_fund : Pubkey,
     pub fee_pool :Pubkey,
+    pub request_queue : Pubkey,
+    pub event_queue : Pubkey,
     pub trading_paused : bool,
     pub im_bps_default:u16,
     pub mm_bps_default:u16,
