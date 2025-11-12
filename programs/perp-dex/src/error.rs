@@ -15,7 +15,15 @@ pub enum PerpError {
     #[msg("Insufficient Space")]
     InsufficientSpace,
     #[msg("Slab is full")]
-    SlabFull
+    SlabFull,
+    #[msg("Invalid Tree")]
+    InvalidTree,
+    #[msg("Invalid node type")]
+    InvalidNodeType,
+    #[msg("Node is root")]
+    NodeIsRoot,
+    #[msg("Node not found")]
+    NodeNotFound
 
 
 }

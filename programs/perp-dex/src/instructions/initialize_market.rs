@@ -4,7 +4,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
 };
 
-use crate::{BidAsk, MarketState, PerpError, RequestQueue,EventQueue};
+use crate::{ASK_SLAB_CAPACITY, BID_SLAB_CAPACITY, BidAsk, EventQueue, MarketState, PerpError, RequestQueue, Slab};
 
 #[derive(Accounts)]
 #[instruction(market_symbol: String)]
@@ -19,13 +19,14 @@ pub struct InitializeMarket<'info> {
         seeds = [b"market", market_symbol.as_bytes()],
         bump
     )]
+    
     pub market: Account<'info, MarketState>,
 
     // TODO: Adjust sizes for bid/ask/queues as needed
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + BidAsk::INIT_SPACE,
+        space = 8 + Slab::compute_allocation_size(BID_SLAB_CAPACITY),
         seeds = [b"bids", market_symbol.as_bytes()],
         bump
     )]
@@ -34,7 +35,7 @@ pub struct InitializeMarket<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + BidAsk::INIT_SPACE,
+        space = 8 + Slab::compute_allocation_size(ASK_SLAB_CAPACITY),
         seeds = [b"asks", market_symbol.as_bytes()],
         bump
     )]
@@ -84,6 +85,8 @@ impl<'info> InitializeMarket<'info> {
                 || market.authority == self.authority.key(),
             PerpError::NotAuthorized
         );
+        let bid_account_info = &mut self.bids.to_account_info();
+        let ask_account_info = &mut self.asks.to_account_info();
 
         market.symbol = symbol;
         market.authority = self.authority.key();
@@ -105,7 +108,18 @@ impl<'info> InitializeMarket<'info> {
         market.step_size = step_size;
         market.min_order_notional = min_order_notional;
         market.bump = bump.market;
-        
+
+        {
+            let mut bid_data = bid_account_info.try_borrow_mut_data()?;//we are accesing underlaying bytes of this account
+            let data_ref: &mut[u8] = &mut **bid_data;
+            Slab::initializ(data_ref,BID_SLAB_CAPACITY)?;
+        }
+        {
+            let mut ask_data = ask_account_info.try_borrow_mut_data()?;
+            let data_ref: &mut[u8] = &mut **ask_data;
+            Slab::initializ(data_ref,ASK_SLAB_CAPACITY)?;
+
+        }
         emit!(MarketInitialized {
             market: market.key(),
             symbol: market.symbol.clone(),
