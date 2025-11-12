@@ -5,3 +5,4 @@ target
 node_modules
 test-ledger
 .yarn
+programs/perp-dex/src/claud.rs

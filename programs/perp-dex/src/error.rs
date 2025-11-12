@@ -11,8 +11,11 @@ pub enum PerpError {
     #[msg("Invalid quantity")]
     InvalidQuantity,
     #[msg("Invalid Amount")]
-    InvalidAmount
+    InvalidAmount,
+    #[msg("Insufficient Space")]
+    InsufficientSpace,
+    #[msg("Slab is full")]
+    SlabFull
 
 
-    
 }

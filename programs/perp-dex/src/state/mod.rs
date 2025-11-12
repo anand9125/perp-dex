@@ -16,3 +16,6 @@ pub use position::*;
 
 pub mod order;
 pub use order::*;
+
+pub mod  slab;
+pub use slab::*;
