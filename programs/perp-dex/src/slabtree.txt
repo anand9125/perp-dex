@@ -208,3 +208,67 @@ After reinterpretation:
 │ [AnyNode, AnyNode, AnyNode, ...]              │
 │   ^ each element is now a typed struct view   │
 └───────────────────────────────────────────────┘
+
+
+
+1. Purpose of load_mut()
+
+load_mut() is used after the slab has already been initialized once.
+
+It doesn’t build or modify the memory layout — it just opens the existing one so you can access and modify its fields safely.
+
+So in simple words:
+
+load_mut() = reinterpret existing account bytes as a mutable Slab reference.
+
+
+
+
+. Imagine a brand-new empty storage space
+
+You have an empty Solana account.
+Inside it is just a bunch of unstructured bytes like this:
+
+[ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ... ]
+
+
+Think of this as an empty hard drive — no filesystem, no files, just raw storage.
+
+2. What you actually want
+
+You want to store a Slab (a tree-based orderbook) inside that storage.
+A slab has structure:
+
+┌─────────────┬──────────────────────┐
+│  HEADER     │  ARRAY OF NODES      │
+│ (metadata)  │ (inner, leaf, free)  │
+└─────────────┴──────────────────────┘
+
+
+So before you can use it, you must create that structure inside the bytes.
+
+3. What initialize() does
+
+initialize() is the step that creates that structure for the first time.
+
+It’s the “format the disk” step.
+
+Let’s see what happens line-by-line
+Step 1 – check size
+
+Make sure the Solana account has enough bytes to fit the slab.
+
+Step 2 – zero everything
+bytes.fill(0);
+
+
+Clean out all junk bytes.
+
+Step 3 – reinterpret the bytes as a Slab
+let slab = Self::from_bytes_mut(bytes)?;
+
+
+Now Rust can treat those raw bytes as a Slab struct.
+This is like saying:
+
+“These bytes now follow the layout of a Slab (header + nodes).”

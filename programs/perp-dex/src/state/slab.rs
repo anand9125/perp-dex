@@ -1,9 +1,6 @@
-
 use bytemuck ::{Pod,Zeroable};
-
 use crate::{FREE_NODE, INNER_NODE, INVALID_INDEX, LAST_FREE_NODE, LEAF_NODE, NODE_SIZE, SLAB_HEADER_LEN};
 use crate::PerpError;
-
 #[derive(Copy,Clone,Pod,Zeroable)]
 #[repr(C)]
 pub struct  SlabHeader {
@@ -27,8 +24,6 @@ impl SlabHeader{
         self.leaf_count == 0
     }
 }
-
-
 #[derive(Copy,Clone,Pod,Zeroable)]
 #[repr(C)]
 pub struct InnerNode {
@@ -39,7 +34,6 @@ pub struct InnerNode {
     pub children : [u32;2],//left right  child indices
     pub _reserverd :[u64;5]  //Reserved space for future fields,lso keeps node size fixed (80 bytes total) and aligned
 }
-
 impl InnerNode {
     pub fn new (prefix_len :u64,key:u128)->Self{
         Self { 
@@ -77,42 +71,43 @@ impl InnerNode {
 
 
 
-#[derive(Copy, Clone, Pod, Zeroable)]
+
+#[derive(Clone, Copy, Zeroable, Pod, Debug)]
 #[repr(C)]
 pub struct LeafNode {
-    pub key: u128,          
-    pub owner: [u8; 32],     
-    pub quantity: u64,       
-    pub client_order_id: u64,
-    pub timestamp: i64,
     pub tag: u32,
-    pub owner_slot: u8,
     pub fee_tier: u8,
-    pub padding: [u8; 2],    
+    pub reserved: [u8; 3],
+    pub key: u128,
+    pub owner: [u8; 32],
+    pub quantity: u64,
+    pub timestamp: i64,
 }
 
 impl LeafNode {
     pub fn new(
-        owner_slot: u8,
         key: u128,
         owner: [u8; 32],
         quantity: u64,
         fee_tier: u8,
-        client_order_id: u64,
         timestamp: i64,
     ) -> Self {
         Self {
             tag: LEAF_NODE,
-            owner_slot,
             fee_tier,
-            padding: [0; 2],
+            reserved: [0; 3],
             key,
             owner,
             quantity,
-            client_order_id,
             timestamp,
         }
     }
+
+
+
+
+
+
 
     /// Extract price from order ID (high 64 bits)
     #[inline]
@@ -170,7 +165,6 @@ pub struct  AnyNode{
     pub node : NodeUnion
 }
 
-
 impl AnyNode {
     #[inline]
     pub fn tag(&self) -> u32 {
@@ -216,7 +210,6 @@ impl AnyNode {
 
 
 #[repr(C)]
-
 pub struct Slab {
     pub header : SlabHeader,
     pub nodes : [AnyNode]
@@ -262,6 +255,7 @@ impl  Slab {
       Ok(slab)
     
     }
+  
     pub fn from_bytes_mut(bytes: &mut[u8])->Result<&mut Self,PerpError>{
 
         let(header_bytes,node_bytes) = bytes.split_at_mut(SLAB_HEADER_LEN);
@@ -304,7 +298,6 @@ impl  Slab {
 
         Err(PerpError::SlabFull)
     }
-
     fn free_node(&mut self,index:u32){
         let node = &mut self.nodes[index as usize];
         node.node.free = FreeNode { 
@@ -384,7 +377,6 @@ impl  Slab {
         self.header.leaf_count +=1;
         Ok(new_leaf_index)
     }
-    
     pub fn remove_leaf (&mut self,leaf_index:u32)->Result<LeafNode,PerpError>{
         if self.nodes[leaf_index as usize].tag() != LEAF_NODE{
             return Err(PerpError::InvalidNodeType);

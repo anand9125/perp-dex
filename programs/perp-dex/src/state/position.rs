@@ -15,7 +15,7 @@ pub struct Position {
     // --- order intent ---
     pub side: Side,            // Buy or Sell
     pub price: u32,            // limit price (0 if market order)
-    pub qty : u8,             // requested order size in base lots
+    pub qty : u64,             // requested order size in base lots
     pub order_type: OrderType, // Market / Limit / Stop / etc.
     pub status: OrderStatus,   // Pending / Filled / Cancelled
 

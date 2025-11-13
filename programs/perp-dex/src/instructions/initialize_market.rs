@@ -79,7 +79,6 @@ impl<'info> InitializeMarket<'info> {
         bump:&InitializeMarketBumps
     ) -> Result<()> {
         let market = &mut self.market;
-
         require!(
             market.authority == Pubkey::default()
                 || market.authority == self.authority.key(),
@@ -87,7 +86,6 @@ impl<'info> InitializeMarket<'info> {
         );
         let bid_account_info = &mut self.bids.to_account_info();
         let ask_account_info = &mut self.asks.to_account_info();
-
         market.symbol = symbol;
         market.authority = self.authority.key();
         market.oracle_pubkey = oracle_pubkey;
@@ -108,7 +106,6 @@ impl<'info> InitializeMarket<'info> {
         market.step_size = step_size;
         market.min_order_notional = min_order_notional;
         market.bump = bump.market;
-
         {
             let mut bid_data = bid_account_info.try_borrow_mut_data()?;//we are accesing underlaying bytes of this account
             let data_ref: &mut[u8] = &mut **bid_data;
@@ -118,7 +115,6 @@ impl<'info> InitializeMarket<'info> {
             let mut ask_data = ask_account_info.try_borrow_mut_data()?;
             let data_ref: &mut[u8] = &mut **ask_data;
             Slab::initializ(data_ref,ASK_SLAB_CAPACITY)?;
-
         }
         emit!(MarketInitialized {
             market: market.key(),

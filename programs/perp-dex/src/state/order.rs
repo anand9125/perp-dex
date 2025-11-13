@@ -5,14 +5,15 @@ use crate::{ MAX_HISTOY, OrderType, Side, order};
 #[account]
 #[derive(InitSpace)]
 pub struct  Order{
-   pub order_id : u16,
+   pub user : [u8; 32],
+   pub order_id : u128,
    pub side : Side,
-   pub qty : u8,
+   pub qty : u64,
    pub order_type :OrderType,
    pub limit_price : u64,
    pub initial_margin : u64,
    pub leverage : u8,
-   pub market : Pubkey
+   pub market : Pubkey,
 }
 
 
