@@ -9,7 +9,7 @@ use anchor_lang::solana_program::sysvar::clock::Clock;
 
 pub const MAX_HISTOY: usize = 1024;
 
-use crate::{GlobalConfig, MarketState, Order, OrderHistory, PerpError, Position, RequestQueue, make_order_id, queue};
+use crate::{GlobalConfig, MarketState, Order, OrderHistory, PerpError, Position, RequestQueue, RequestType, make_order_id, request_queue};
 #[derive(Accounts)]
 #[instruction(user_id:u8 )]
 pub struct PlaceOrder<'info>{
@@ -120,13 +120,8 @@ impl <'info> PlaceOrder <'info>{
     let order_history = &mut self.order_history;
     order_history.push_order(order.clone());
     
-    let idx = (request_queues.tail % request_queues.capacity) as usize;
-    request_queues.requests[idx] = order;
-    request_queues.tail = (request_queues.tail+1)% request_queues.capacity; //so that it does not go out of bound
-    request_queues.count +=1;
+    request_queues.push(RequestType::Place(order))?;
 
-    //TODO emit the event
-    
        Ok(())
     }
     

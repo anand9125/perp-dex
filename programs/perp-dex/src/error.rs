@@ -25,7 +25,9 @@ pub enum PerpError {
     #[msg("Node not found")]
     NodeNotFound,
     #[msg("Order not found")]
-    OrderNotFound
+    OrderNotFound,
+    #[msg("Queue is Empty")]
+    QueueEmpty
 
 
 }

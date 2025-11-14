@@ -7,8 +7,11 @@ pub use global::*;
 pub mod bid_ask;
 pub use bid_ask::*;
 
-pub mod queue;
-pub use queue::*;
+pub mod request_queue;
+pub use request_queue::*;
+
+pub mod event_queue;
+pub use event_queue::*;
 
 pub mod position;
 pub use position::*;

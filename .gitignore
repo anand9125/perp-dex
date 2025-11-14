@@ -6,3 +6,9 @@ node_modules
 test-ledger
 .yarn
 programs/perp-dex/src/claud.rs
+programs/perp-dex/src/requestQuuese.txt
+programs/perp-dex/src/slabtree.txt
+programs/perp-dex/src/TODO.txt
+
+
+

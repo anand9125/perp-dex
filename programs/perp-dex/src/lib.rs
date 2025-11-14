@@ -3,6 +3,8 @@ pub mod error;
 pub mod instructions;
 pub mod state;
 pub mod utils;
+pub mod engine;
+pub mod event;
 
 use anchor_lang::prelude::*;
 
@@ -11,6 +13,9 @@ pub use instructions::*;
 pub use state::*;
 pub use error::*;
 pub use utils::*;
+pub use engine::*;
+pub use event::*;
+
 
 declare_id!("6FFcqM61UALXUBeXPDQw1J8MLH9r9T5cTsV3uFxQdqLK");
 

@@ -506,3 +506,40 @@ Your Event is a normal Rust struct
 So: NO BYTEMUCK REQUIRED.
 
 Because you are NOT doing zero-copy or raw memory operations.
+
+
+
+
+
+# wrapping_add() is a safe integer increment that never panics and never overflows.
+
+# Why wrapping_add exists
+
+In Rust, if you do:
+
+u16_value += 1;
+
+
+and the value is already at the maximum (65535),
+it will panic in debug mode because Rust checks for overflow.
+
+Overflow is UB (undefined behavior), so debug mode refuses to allow it.
+
+Example:
+
+let mut x: u16 = 65535;
+x += 1;      // panics in debug mode
+
+
+This is a problem for circular buffers, where you want the pointer to wrap.
+
+# ✔ What wrapping_add does
+x = x.wrapping_add(1);
+
+
+means:
+
+if x == max_value:
+    x = 0
+else:
+    x = x + 1

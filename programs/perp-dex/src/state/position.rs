@@ -33,7 +33,7 @@ pub struct Position {
     pub updated_at: i64,       // last update timestamp
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace,PartialEq)]
 pub enum OrderType {
     Market,
     Limit
