@@ -18,3 +18,5 @@ pub const INVALID_INDEX: u32 = u32::MAX;
 
 pub const BID_SLAB_CAPACITY: usize = 1000;
 pub const ASK_SLAB_CAPACITY: usize = 1000;
+
+pub const MAX_TO_PROCESS:u16 = 10;

@@ -1,12 +1,10 @@
-use std::backtrace::BacktraceStatus;
-
-use anchor_lang::{prelude::*, solana_program::address_lookup_table::program::id};
+use anchor_lang::{prelude::*};
 
 use anchor_spl::{
     token::{ Token},
     associated_token::AssociatedToken,
 };
-use crate::{BidAsk, EventQueue, LeafNode, MarketState, Order, OrderType, PerpError, RequestQueue, SLAB_HEADER_LEN, Side, Slab, order};
+use crate::{BidAsk, EventQueue, LeafNode, MAX_TO_PROCESS, MarketState, Order, OrderType, PerpError, RequestQueue, Side, Slab};
 
 #[derive(Accounts)]
 #[instruction(market_symbol:String)]
@@ -53,6 +51,20 @@ impl <'info> ProcessOrder<'info>{
         order : Order
     )->Result<()>{
         //TODO => Do all checks
+
+        let request_queues = &mut self.request_queue;
+        let mut processed : u16 = 0;
+
+        while request_queues.count > 0 && processed < MAX_TO_PROCESS {
+            let idx = (request_queues.head % request_queues.capacity) as usize;
+            let order = request_queues.requests[idx].clone();
+            //matching logic here we will send ordr from here
+
+            request_queues.head = (request_queues.head + 1) % request_queues.capacity;  //If you don’t use modulo, the pointer goes out of bounds.
+            request_queues.count -= 1;
+            processed += 1 ;
+
+        }
         
         let mut fill:Vec<FillEvent> = Vec::new();
         //TODO get taker/maker fees calculation from global config
@@ -94,6 +106,7 @@ impl <'info> ProcessOrder<'info>{
                         }
                         OrderType::Market=>{
                             msg!("market buy order partially filled Reamining will get cancelled")
+                            // self.cancel_order(order)?;
                         }
                     }
                 }
@@ -130,17 +143,14 @@ impl <'info> ProcessOrder<'info>{
                         }
                         OrderType::Market=>{
                             msg!("Market sell order partially filled remaining quantity:{}",remaining_qty);
+                            // self.cancel_order(order)?;
                         }
-                        
-
                     }
                 }
-            }
-            
+            }  
         }
         Ok(())
     }
-
     fn match_against_book(
         book:&mut Slab,
         order:&Order,
@@ -212,6 +222,36 @@ impl <'info> ProcessOrder<'info>{
         Ok(remaining_qty)
 
     }
+    fn cancel_order (
+        &self,
+        order: Order
+    )->Result<()>{
+        //TODO  do all checks 
+
+        let removed_leaf = match order.side{
+            Side::Buy=>{
+                let bid_account_info = self.bids.to_account_info();
+                let mut bid_data = bid_account_info.try_borrow_mut_data()?;
+                let bid_data_ref:&mut [u8] = &mut **bid_data;
+                let bid_slab = Slab::from_bytes_mut(bid_data_ref)?;
+
+                let order_index = bid_slab.find_by_key(order.order_id).ok_or(PerpError::OrderNotFound)?;
+                bid_slab.remove_leaf(order_index)?
+            }
+            Side::Sell=>{
+                let ask_account_info = self.asks.to_account_info();
+                let mut ask_data = ask_account_info.try_borrow_mut_data()?;
+                let aks_data_ref :&mut[u8] = &mut **ask_data;
+                let ask_slab = Slab::from_bytes_mut(aks_data_ref)?;
+
+                let order_index  = ask_slab.find_by_key(order.order_id).ok_or(PerpError::OrderNotFound)?;
+                ask_slab.remove_leaf(order_index)?
+
+            }
+        };
+        Ok(())
+    }
+    
 }
 
 #[derive(Debug, Clone)]

@@ -122,7 +122,7 @@ impl <'info> PlaceOrder <'info>{
     
     let idx = (request_queues.tail % request_queues.capacity) as usize;
     request_queues.requests[idx] = order;
-    request_queues.tail += 1;
+    request_queues.tail = (request_queues.tail+1)% request_queues.capacity; //so that it does not go out of bound
     request_queues.count +=1;
 
     //TODO emit the event

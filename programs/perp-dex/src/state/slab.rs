@@ -103,12 +103,6 @@ impl LeafNode {
         }
     }
 
-
-
-
-
-
-
     /// Extract price from order ID (high 64 bits)
     #[inline]
     pub fn price(&self) -> u64 {
@@ -515,9 +509,6 @@ impl  Slab {
             }
 
         }
-            
-        
-
     }
 }
         

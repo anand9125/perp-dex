@@ -23,7 +23,9 @@ pub enum PerpError {
     #[msg("Node is root")]
     NodeIsRoot,
     #[msg("Node not found")]
-    NodeNotFound
+    NodeNotFound,
+    #[msg("Order not found")]
+    OrderNotFound
 
 
 }
