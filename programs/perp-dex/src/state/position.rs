@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::Order;
-
 
 #[account]
 #[derive(InitSpace)]
@@ -20,8 +18,9 @@ pub struct Position {
     pub status: OrderStatus,   // Pending / Filled / Cancelled
 
     // --- position state ---
-    pub base_position: i8,    // + long, - short (actual filled size)
-    pub realized_pnl: i32,     // realized PnL from partial closes / funding
+    pub base_position: i64,    // + long, - short (actual filled size)
+    pub entry_price : u64,
+    pub realized_pnl: i64,     // realized PnL from partial closes / funding
     pub last_cum_funding_long: i64,
     pub last_cum_funding_short: i64,
     pub initial_margin: u64,   // margin locked when opening

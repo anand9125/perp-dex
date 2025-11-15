@@ -46,7 +46,7 @@ pub struct ProcessOrder <'info>{
     pub token_program : Program<'info,Token>
 }
 pub fn handler(mut ctx: Context<ProcessOrder>) -> Result<()> {
-    let mut processed = 0;
+    let processed = 0;
 
     while ctx.accounts.request_queue.count > 0 && processed < MAX_TO_PROCESS {
          let request = {
@@ -64,7 +64,7 @@ pub fn handler(mut ctx: Context<ProcessOrder>) -> Result<()> {
         }
 
           // FIXED
-        processed += 1;
+        processed.wrapping_add(1);
     }
 
     Ok(())

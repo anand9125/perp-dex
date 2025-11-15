@@ -1,175 +1,251 @@
-use anchor_lang::prelude::*;
+# What Is “Position Management”?
 
-/// Number of request slots in the queue
-pub const MAX_REQUESTS: usize = 1024;
+Whenever an order is filled (either fully or partially), your DEX must update:
 
-declare_id!("ReqQue1111111111111111111111111111111111111");
+Position size
 
-#[program]
-pub mod perpx_request_queue {
-    use super::*;
+Average entry price
 
-    pub fn initialize_request_queue(ctx: Context<InitializeRequestQueue>) -> Result<()> {
-        let mut queue = ctx.accounts.request_queue.load_init()?;
-        queue.head = 0;
-        queue.tail = 0;
-        queue.count = 0;
-        queue.capacity = MAX_REQUESTS as u64;
-        Ok(())
-    }
+Realized PnL (if reducing)
 
-    pub fn push_request(ctx: Context<PushRequest>, req_data: RequestData) -> Result<()> {
-        let mut queue = ctx.accounts.request_queue.load_mut()?;
+Unrealized PnL (computed, not stored)
 
-        require!(queue.count < queue.capacity, ErrorCode::QueueFull);
+Collateral / margin used
 
-        let idx = (queue.tail % queue.capacity) as usize;
+Position side (long vs short)
 
-        queue.requests[idx] = Request {
-            request_type: req_data.request_type,
-            owner: ctx.accounts.owner.key(),
-            market: req_data.market,
-            order_id: req_data.order_id,
-            side: req_data.side,
-            price: req_data.price,
-            amount: req_data.amount,
-            timestamp: Clock::get()?.unix_timestamp,
-        };
+Position status (open/closed)
 
-        queue.tail += 1;
-        queue.count += 1;
+This is critical for:
 
-        Ok(())
-    }
+showing user’s open positions
 
-    // Used by off-chain crank to consume the queue
-    pub fn consume_request(ctx: Context<ConsumeRequest>, limit: u64) -> Result<()> {
-        let mut queue = ctx.accounts.request_queue.load_mut()?;
+handling leverage
 
-        let mut processed = 0u64;
+calculating liquidation prices
 
-        while processed < limit && queue.count > 0 {
-            let idx = (queue.head % queue.capacity) as usize;
-            let req = queue.requests[idx];
+computing funding rate
 
-            // TODO: off-chain crank should handle the real logic like:
-            // match_orders, cancel, liquidate, etc.
-            // On-chain here we just simulate removal.
+calculating PnL
 
-            msg!(
-                "Processing request {:?} order_id={:?} owner={:?}",
-                req.request_type,
-                req.order_id,
-                req.owner
-            );
+allowing users to close trades
 
-            queue.head += 1;
-            queue.count -= 1;
-            processed += 1;
-        }
+Note => The EventQueue is the source of post-match truth
+Event entries must include: event type (maker/taker/out/cancel), order_id, owner, taker/maker flag, price, qty, fee amounts, timestamp, sequence.
+EventQueue is read by off-chain components (indexer, settlement bot, UI).
+Design principle: EventQueue contains everything off-chain consumers need to settle balances and update positions. It must be durable and ordered.
 
-        Ok(())
-    }
-}
+Phase 3 — Off-chain consumers (indexers / cranker helpers)
+There are two separate off-chain loops:
+A — Cranker loop
+Purpose: keep processing requests by calling process_order when queue has items. Already discussed.
+B — Event consumer / settlement worker (indexer + settler)
+Purpose: read EventQueue entries for users and either (a) perform final on-chain settlement (transfer quote/base tokens), or (b) update off-chain DB and post messages to UI, or (c) trigger settle instructions for users.
+Two models:
+Pull settlement: users call settle (or a relayer does) to actually move tokens from vault to user account, using event queue as the source of what to settle.
+Active settler: a relayer reads events and calls settle on behalf of users (requires authority or per-user approvals).
+Event consumer must be idempotent: store last processed event seq and skip duplicates.
 
 
+Phase 4 — Position updates (business logic)
 
+Where to update positions? Two approaches:
 
+On-chain per-match: update Position accounts immediately inside the same process_order transaction (works if position account fits in the instruction; simplest for correctness).
 
+Off-chain settlement: write events only; position updates are done by a separate apply_events instruction run by a relayer that consumes event queue and updates positions. (More complex but can keep process_order smaller.)
 
+Recommendation: For correctness and simplicity, update minimal position fields on-chain as part of matching (if you can afford the account accesses). If not, make a deterministic apply_events on-chain path which relayers call.
 
+Position update rules (per fill)
 
+For each fill (taker & maker separately), apply:
 
+Determine fill_side relative to the user (BUY increases long, SELL increases short when same side).
 
+Compute remaining_qty and fill_qty.
 
+If fill is same side as position:
 
+New average entry price (weighted average):
+entry_new = (entry_old * qty_old + fill_price * fill_qty) / (qty_old + fill_qty)
 
+qty_new = qty_old + fill_qty
 
+No realized PnL change.
 
+If fill is opposite side (reducing or flipping):
 
+realized = (exit_price - entry_price) * closed_qty (sign depends on side)
 
-#[derive(Accounts)]
-pub struct InitializeRequestQueue<'info> {
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + RequestQueue::SIZE,
-        seeds = [b"request_queue"],
-        bump,
-    )]
-    pub request_queue: AccountLoader<'info, RequestQueue>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
+For long closed: (fill_price - entry_price) * closed_qty
 
-#[derive(Accounts)]
-pub struct PushRequest<'info> {
-    #[account(mut)]
-    pub request_queue: AccountLoader<'info, RequestQueue>,
-    #[account(mut)]
-    pub owner: Signer<'info>,
-}
+For short closed: (entry_price - fill_price) * closed_qty
 
-#[derive(Accounts)]
-pub struct ConsumeRequest<'info> {
-    #[account(mut)]
-    pub request_queue: AccountLoader<'info, RequestQueue>,
-}
+qty_old reduces by closed_qty.
 
-/// Zero-copy request queue
-#[account(zero_copy)]
-pub struct RequestQueue {
-    pub head: u64,       // index for crank to read
-    pub tail: u64,       // index for users to write
-    pub count: u64,      // current active requests
-    pub capacity: u64,   // total slots
-    pub requests: [Request; MAX_REQUESTS],
-}
+If fill_qty > qty_old, the remainder opens new position in opposite side at entry_price = fill_price with qty fill_qty - qty_old.
 
-impl RequestQueue {
-    pub const SIZE: usize =
-        8 * 4 + (Request::SIZE * MAX_REQUESTS); // metadata + all request entries
-}
+Update position.realized_pnl (accumulate), position.qty, position.side, position.entry_price as above.
 
-#[zero_copy]
-#[derive(Default, AnchorSerialize, AnchorDeserialize, Debug, PartialEq, Eq, Copy, Clone)]
-pub struct Request {
-    pub request_type: RequestType,
-    pub owner: Pubkey,
-    pub market: Pubkey,
-    pub order_id: u128,
-    pub side: Side,
-    pub price: u64,
-    pub amount: u64,
-    pub timestamp: i64,
-}
+Update position.margin_used (if you maintain per-position margin). For isolated margin: reduce locked margin when closing; for cross margin: track global collateral per user.
 
-impl Request {
-    pub const SIZE: usize = 1 + 32 + 32 + 16 + 1 + 8 + 8 + 8;
-}
+Example:
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RequestData {
-    pub request_type: RequestType,
-    pub market: Pubkey,
-    pub order_id: u128,
-    pub side: Side,
-    pub price: u64,
-    pub amount: u64,
-}
+pos: long 10 @100
 
-#[repr(u8)]
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RequestType {
-    PlaceOrder = 0,
-    CancelOrder = 1,
-    Liquidate = 2,
-}
+fill: sell 7 @110
 
-#[repr(u8)]
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Side {
-    Bid = 0,
-    Ask = 1,
-}
+realized = (110-100)*7 = 70
+
+pos becomes long 3 @100
+
+In practice: compute with signed integers, avoid rounding errors, use fixed point.
+
+Phase 5 — Collateral & margin accounting
+
+Two common margin models:
+
+Isolated margin per position: each position has its own locked margin → easier to compute liquidation for single position.
+
+Cross margin across user: single collateral pool across positions → more complex liquidation logic but better capital efficiency.
+
+You must decide. For Perp DEX, many prefer cross margin with health aggregation.
+
+Required fields & formulas
+
+Notional = qty * mark_price (or qty * contract_size * mark_price depending on contract).
+
+Initial margin requirement = Notional / leverage (or notional * initial_margin_ratio).
+
+Maintenance margin requirement = Notional * maintenance_margin_ratio.
+
+For each user (cross margin):
+
+total_collateral (in quote token): initial deposits + realized pnl +/- unsettled
+
+total_notional = sum over positions of notional
+
+required_initial = sum of initial margins
+
+required_maintenance = sum maintenance
+
+Free collateral / margin cushion = total_collateral - required_maintenance
+
+Health = maybe total_collateral / required_maintenance or total_collateral - required_maintenance depending on your choice. Health < 0 => liquidatable.
+
+Recommended safety: compute using high precision and conservative oracles.
+
+Phase 6 — Liquidation logic (high level)
+
+Liquidation is the process of forcibly closing (part of) a user's positions when margin is insufficient.
+
+Trigger
+
+Off-chain liquidator (worker) monitors users’ health (polling or via indexer).
+
+If health <= liquidation_threshold or collateral < maintenance_required, the liquidator submits a liquidate transaction.
+
+Liquidator options:
+
+Full liquidation: close entire position(s).
+
+Partial liquidation: reduce position until health recovers to safe level.
+
+Auction / Matching with on-chain matching: run a liquidation through orderbook as taker (liquidator places order to consume the user’s position).
+
+Buys on offer / sells on bid: Prefer to use orderbook to get market price.
+
+On-chain liquidate instruction responsibilities
+
+Validate liquidator called and user is undercollateralized (recompute using oracle inside tx).
+
+Determine amount to close (full or partial). Many designs close up to max_liquidation_amount = position.qty * liquidation_penalty_ratio or close enough to restore health to post_liquidation_health_threshold.
+
+Remove or reduce position(s) by simulating fills (perform matching or direct removal).
+
+Apply liquidation penalty (e.g., 5% of notional) and send to liquidator (incentive) and to insurance fund.
+
+Update position.realized_pnl, collateral, insurance_fund, and emit LiquidationEvent to EventQueue.
+
+Implementation patterns
+
+Direct removal: if you store position and maintain off-chain mark prices, you could allow liquidate to remove position and apply PnL using mark price. But this is less fair — better to execute liquidation via the orderbook to get actual market price.
+
+Orderbook liquidation: liquidator submits market orders that consume the undercollateralized position as maker/taker. This uses normal matching flow and generates fills.
+
+Recommendation: perform liquidation through the orderbook where possible to ensure price discovery and fairness; if liquidity thin, allow some "forced close" at oracle price plus penalty, with strict limits.
+
+Phase 7 — Insurance fund & fees
+
+Fees (maker/taker) collected on match go to fee pool.
+
+Liquidation penalty is split: part to liquidator, part to insurance fund.
+
+Insurance fund covers shortfalls when user collateral cannot cover negative PnL after liquidation.
+
+Periodically (or when needed) admin can withdraw insurance funds for losses.
+
+Phase 8 — Funding payments
+
+Perpetual futures require funding payments periodicly to keep perpetual price anchored to index.
+
+Maintain funding_rate (global accumulator) computed from mark_price - index_price or from spread between perp mid and index.
+
+Funding distributed pro rata to open positions: longs pay shorts or vice versa based on sign.
+
+Settlement: apply funding payment on each position, either on a schedule (on chain cron via relayers) or during certain user actions (lazy settlement).
+
+Update position.realized_pnl and collateral for funding transfers.
+
+Phase 9 — Settlement & withdrawing
+
+Users must be able to settle to transfer netted quote tokens from vaults to user wallets after events are processed.
+
+Keep a per-user ledger or use event queue for settlement instructions.
+
+Settlement should be idempotent and resilient: track sequence numbers.
+
+Phase 10 — Off-chain workers & monitoring
+
+You need several off-chain workers:
+
+Cranker — poll request_queue.count and call process_order.
+
+Event consumer / indexer — tail the EventQueue, write to DB, update UI.
+
+Settlement relayer — optionally call settle instructions on behalf of users.
+
+Liquidator(s) — watch health, submit liquidate transactions when needed.
+
+Funding bot — compute funding and call funding settle instructions at intervals.
+
+Alerting & monitoring — track queue depth, EQ fullness, CPU errors, oracle staleness.
+
+Workers must:
+
+Be idempotent (track last processed event sequence).
+
+Handle reorgs and failed txs (confirm finality).
+
+Respect compute limits (batch sizes).
+
+Retry with exponential backoff.
+
+Phase 11 — Edge cases & invariants (must enforce)
+
+Oracle stale or missing: disallow matching that depends on mark price if oracle stale; pause liquidations and certain actions.
+
+EventQueue full: when EQ full, process_order should stop processing further requests (to avoid losing events) — cranker must retry later.
+
+Partial matching with EQ capacity: if match would produce more events than remaining EQ slots, either stop before the request (roll back) or partially match and requeue the remainder. Simpler: stop and let cranker retry later.
+
+Idempotency: client client_order_id and request sequence help avoid duplicate order processing if place_order retried.
+
+Unauthorized cancels: check cancel owner matches order owner. Ownership verification must be done during process_cancel.
+
+Front-running & MEV: because cranker is off-chain, many bots will compete to crank. Ensure fairness by deterministic on-chain processing order (FIFO) and robust event ordering.
+
+Precision & rounding: pick a fixed-point representation (e.g., price and qty integers with agreed multiplier) and stick to it.
+
+Integer overflow: use wrapping or checked arithmetic where appropriate; ensure highest ranges are safe.

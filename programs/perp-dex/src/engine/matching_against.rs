@@ -44,8 +44,8 @@ pub fn match_against_book<'info>(
             is_maker:true,
             order_id:best_leaf.key,
             user:best_leaf.owner,
-            price : fill_price,
-            qty:fill_qty,
+            fill_price : fill_price,
+            fill_qty:fill_qty,
             side : match order.side {
                 Side::Buy=>Side::Sell,
                 Side::Sell=>Side::Buy
@@ -58,8 +58,8 @@ pub fn match_against_book<'info>(
             is_maker:false,
             order_id:order.order_id,
             user:order.user,
-            price:fill_price,
-            qty:fill_qty,
+            fill_price:fill_price,
+            fill_qty:fill_qty,
             side:order.side,
             timestamp:Clock::get()?.unix_timestamp
         });

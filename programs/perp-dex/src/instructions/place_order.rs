@@ -11,7 +11,6 @@ pub const MAX_HISTOY: usize = 1024;
 
 use crate::{GlobalConfig, MarketState, Order, OrderHistory, PerpError, Position, RequestQueue, RequestType, make_order_id, request_queue};
 #[derive(Accounts)]
-#[instruction(user_id:u8 )]
 pub struct PlaceOrder<'info>{
     #[account(mut)]
     pub user : Signer<'info>,
@@ -24,7 +23,7 @@ pub struct PlaceOrder<'info>{
     pub global_config : Account<'info,GlobalConfig>,
     #[account(
         mut,
-        seeds = [b"market"],
+        seeds = [b"market",market.symbol.as_bytes()],
         bump = market.bump
     )]
     pub market : Account<'info,MarketState>,
@@ -47,7 +46,7 @@ pub struct PlaceOrder<'info>{
         init_if_needed,
         space = Position::INIT_SPACE,
         payer = user,
-        seeds = [b"position", market.symbol.as_bytes(), user_id.to_le_bytes().as_ref()],
+        seeds = [b"position", market.symbol.as_bytes(), user.key().as_ref()],
         bump
     )]
     pub position_per_market: Account<'info, Position>,

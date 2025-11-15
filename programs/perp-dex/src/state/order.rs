@@ -29,8 +29,8 @@ pub struct MatchedOrder {
     pub is_maker: bool,
     pub order_id: u128,
     pub user: [u8;32],
-    pub price: u64,
-    pub qty: u64,
+    pub fill_price: u64,
+    pub fill_qty: u64,
     pub side: Side,
     pub timestamp: i64,
 }
