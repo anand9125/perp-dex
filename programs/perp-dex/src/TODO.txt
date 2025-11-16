@@ -249,3 +249,19 @@ Front-running & MEV: because cranker is off-chain, many bots will compete to cra
 Precision & rounding: pick a fixed-point representation (e.g., price and qty integers with agreed multiplier) and stick to it.
 
 Integer overflow: use wrapping or checked arithmetic where appropriate; ensure highest ranges are safe.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -27,7 +27,7 @@ pub enum PerpError {
     #[msg("Order not found")]
     OrderNotFound,
     #[msg("Queue is Empty")]
-    QueueEmpty
-
-
+    QueueEmpty,
+    #[msg("Math overflow")]
+    MathOverflow
 }
