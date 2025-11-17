@@ -3,7 +3,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{ Token},
 };
-use crate::{EventQueue, MAX_TO_PROCESS, MarketState, MatchedOrder, Position, PositionManager, RequestQueue, event};
+use crate::{EventQueue, MAX_TO_PROCESS, MarketState, Position, PositionManager};
 
 #[derive(Accounts)]
 #[instruction(user_key : Pubkey)]

@@ -62,7 +62,6 @@ pub fn handler(mut ctx: Context<ProcessOrder>) -> Result<()> {
             }
             
         }
-
           // FIXED
         processed.wrapping_add(1);
     }

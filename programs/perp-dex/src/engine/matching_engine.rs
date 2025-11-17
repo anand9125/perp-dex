@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{ CancelOrder, LeafNode, Order, OrderType, PerpError, Side, Slab, match_against_book};
+use crate::{ CancelOrder, LeafNode, MatchingType, Order, OrderType, PerpError, Side, Slab, match_against_book};
 
 pub struct MatchingEngine;
 
@@ -19,10 +19,11 @@ impl MatchingEngine {
                 let mut ask_data = ask_account_info.try_borrow_mut_data()?;
                 let ask_bytes: &mut[u8] = &mut **ask_data; 
                 let ask_slab = Slab::from_bytes_mut(ask_bytes)?;
-                let remaining_qty= match_against_book(
+                let(remaining_qty,_)= match_against_book(
                     ask_slab,
                     &order,
-                    ctx
+                    &mut ctx.event_queue,
+                    MatchingType::Normal
                 )?;
                 //Qty remain mean its limit order put in order book
                 if remaining_qty > 0{
@@ -59,10 +60,11 @@ impl MatchingEngine {
                 let bid_bytes :&mut[u8] =  &mut **bid_data;
                 let bid_slab= Slab::from_bytes_mut(bid_bytes)?;
 
-                let remaining_qty = match_against_book(
+                let (remaining_qty,_) = match_against_book(
                     bid_slab,
                     &order,
-                    ctx
+                    &mut ctx.event_queue,
+                    MatchingType::Normal
                 )?;
                 if remaining_qty > 0 {
                     match order.order_type {

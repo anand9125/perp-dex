@@ -1,3 +1,8 @@
+# Short Answer
+
+No — a normal perp DEX does NOT let a user have multiple position accounts for the same market.
+For each (user, market) pair, there should be exactly one position.
+
 # What is a “Cumulative Funding Index”?
 
 The protocol doesn’t actually send small payments every hour to each trader — that would be expensive.

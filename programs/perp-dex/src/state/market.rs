@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use crate::PerpError;
+
 #[account]
 #[derive(InitSpace)]
 pub struct MarketState{
@@ -31,3 +33,12 @@ pub struct MarketState{
 
 }
 
+impl MarketState{
+    pub fn get_mark_price(&self)->Result<u128>{
+        //For simplicity using last oracle price as mark price
+        if self.last_oracle_price <=0 {
+            return Err(PerpError::InvalidAmount.into());
+        }
+        Ok(self.last_oracle_price as u128)
+    }
+}

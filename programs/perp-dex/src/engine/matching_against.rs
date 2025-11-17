@@ -1,14 +1,16 @@
 use anchor_lang::{prelude::*};
 
-use crate::{ MatchedOrder, Order, OrderType, Side, Slab};
+use crate::{ MatchedOrder, MatchingType, Order, OrderType, Side, Slab, event_queue};
 
 pub fn match_against_book<'info>(
     book: &mut Slab,
     order: &Order,
-    ctx: &mut crate::instructions::process_order::ProcessOrder<'info>
-) -> Result<u64> {
+    evnet_queue: &mut Account<'info, event_queue::EventQueue>,
+    match_type:MatchingType,
+) -> Result<(u64,Vec<MatchedOrder>)> {
 
     let mut remaining_qty = order.qty;
+    let mut taker_fills : Vec<MatchedOrder> =Vec::new();
 
     while remaining_qty > 0 {
         let best_index = match order.side {
@@ -40,7 +42,7 @@ pub fn match_against_book<'info>(
         let fill_price = best_price;
 
         // Maker event
-        ctx.event_queue.push(MatchedOrder {
+        let maker_event = MatchedOrder {
             is_maker:true,
             order_id:best_leaf.key,
             user:best_leaf.owner,
@@ -51,10 +53,10 @@ pub fn match_against_book<'info>(
                 Side::Sell=>Side::Buy
             },
             timestamp:Clock::get()?.unix_timestamp,
-        })?;
+        };
 
         //taker eveent
-        ctx.event_queue.push(MatchedOrder {
+        let taker_event = MatchedOrder {
             is_maker:false,
             order_id:order.order_id,
             user:order.user,
@@ -62,7 +64,17 @@ pub fn match_against_book<'info>(
             fill_qty:fill_qty,
             side:order.side,
             timestamp:Clock::get()?.unix_timestamp
-        });
+        };
+        match match_type {
+            MatchingType::Normal=>{
+                evnet_queue.push(taker_event)?;
+                evnet_queue.push(maker_event)?;
+            }
+            MatchingType::Liquidation=>{
+                evnet_queue.push(maker_event)?;
+                taker_fills.push(taker_event);
+            }
+        };
 
         // decrease remaining
         remaining_qty -= fill_qty;
@@ -74,5 +86,5 @@ pub fn match_against_book<'info>(
             leaf.quantity -= fill_qty;
         }
     }
-    Ok(remaining_qty)
+    Ok((remaining_qty,taker_fills))
 }

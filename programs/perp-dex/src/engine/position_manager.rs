@@ -67,7 +67,7 @@ impl PositionManager{
             return Ok(());
         }
 
-        // FULL CLOSE
+        // FULL CLOSE same pnl logic as partial close
         if fill_abs == old_abs {
             let price_diff = if pos_qty > 0 {
                 fill_px - entry

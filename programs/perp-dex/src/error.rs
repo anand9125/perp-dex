@@ -29,5 +29,7 @@ pub enum PerpError {
     #[msg("Queue is Empty")]
     QueueEmpty,
     #[msg("Math overflow")]
-    MathOverflow
+    MathOverflow,
+    #[msg("Nothing to liquidate")]
+    NothingToLiquidate,
 }

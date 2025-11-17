@@ -14,6 +14,7 @@ pub struct GlobalConfig{
     pub mm_bps_default:u16,
     pub taker_fee_bps :u16,
     pub maker_fee_bps : u16,
+    pub liquidator_share_bps :u16, //percentage of the liquidation penalty that goes to the liquidator
     pub liq_penalty_bps:u16,//percentage charged when a user is liquidated. Often part goes to liquidators, part to the insurance fund.
     pub oracle_band_bps: u16,  //oracle_band_bps defines the maximum allowed difference after that trading will stop and perp price stay between these 
     pub funding_interval_secs :u32,  //How often the funding rate updates usually every 1-8 hours

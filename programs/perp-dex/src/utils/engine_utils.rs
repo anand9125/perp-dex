@@ -16,6 +16,10 @@ impl Ratio {
     }
 }
 
+pub enum MatchingType {
+    Normal,
+    Liquidation
+}
 
 
 // mmr = 5% → stored as num = 5, den = 100
