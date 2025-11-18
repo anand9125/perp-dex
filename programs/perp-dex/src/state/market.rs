@@ -27,7 +27,7 @@ pub struct MarketState{
     pub max_funding_rate: i64,
     pub funding_interval_secs :u32,
     
-    pub tick_size :u16,  //
+    pub tick_size :u16,  
     pub step_size :u8,  // the minimum quantity you can buy or sell in that market
     pub min_order_notional:u64,
     pub bump:u8

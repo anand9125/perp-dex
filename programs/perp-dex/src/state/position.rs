@@ -21,8 +21,8 @@ pub struct Position {
     pub base_position: i64,    // + long, - short (actual filled size)
     pub entry_price : u64,
     pub realized_pnl: i64,     // realized PnL from partial closes / funding
-    pub last_cum_funding_long: i64,
-    pub last_cum_funding_short: i64,
+    pub last_cum_funding: i64,
+
     pub initial_margin: u64,   // margin locked when opening
     pub leverage: u8,          // leverage used
 

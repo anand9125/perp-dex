@@ -1,4 +1,3 @@
-use std::ops::{Mul, Sub};
 
 use anchor_lang::prelude::*;
 
@@ -20,8 +19,8 @@ pub fn compute_funding_rate (
     let mark_i = mark_price as i128;
     let oracle_i = oracal_price as i128;
     let price_diff = mark_i
-           .checked_sub(oracle_i)
-           .ok_or(PerpError::MathOverflow)?;
+        .checked_sub(oracle_i)
+        .ok_or(PerpError::MathOverflow)?;
 
     let premium = price_diff
         .checked_mul(FUNDING_SCALE)
@@ -29,12 +28,12 @@ pub fn compute_funding_rate (
         .ok_or(PerpError::MathOverflow)?;
 
     let intrest = (INTEREST_RATE_BPS)
-    .checked_mul(FUNDING_SCALE)
-    .and_then(|v|v.checked_div(10000))
-    .ok_or(PerpError::MathOverflow)?;
-   //why intrest => if mark==oracle
-   //prem =0 and fund = 0,
-   //this cause ,funding system inactive
+        .checked_mul(FUNDING_SCALE)
+        .and_then(|v|v.checked_div(10000))
+        .ok_or(PerpError::MathOverflow)?;
+        //why intrest => if mark==oracle
+        //prem =0 and fund = 0,
+        //this cause ,funding system inactive
 
     let funding_rate = premium
         .checked_add(intrest)
