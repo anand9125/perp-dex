@@ -41,12 +41,14 @@ pub struct Liquidation<'info>{
         bump
     )]
     pub event_queue : Account<'info,EventQueue>,
+
     #[account(
         mut,
         seeds = [b"position",market.symbol.as_bytes(),liquidatee_position.owner.as_ref()],
         bump
     )]
     pub liquidatee_position: Account<'info,Position>,
+    
     #[account(
         mut,
         constraint = liquidatee_token_account.mint == usdc_mint.key(),

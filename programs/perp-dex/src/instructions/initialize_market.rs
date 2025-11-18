@@ -70,8 +70,7 @@ impl<'info> InitializeMarket<'info> {
         mm_bps : u16,
         taker_fee_bps: u16,
         oracle_band_bps: u16,
-        cum_funding_long: i64,
-        cum_funding_short: i64,
+        cum_funding: i64,
         last_funding_ts: i64,
         tick_size: u16,
         step_size: u8,
@@ -99,8 +98,7 @@ impl<'info> InitializeMarket<'info> {
         market.mm_bps = mm_bps;
         market.taker_fee_bps = taker_fee_bps;
         market.oracle_band_bps = oracle_band_bps;
-        market.cum_funding_long = cum_funding_long;
-        market.cum_funding_short = cum_funding_short;
+        market.cum_funding = cum_funding;
         market.last_funding_ts = last_funding_ts;
         market.tick_size = tick_size;
         market.step_size = step_size;

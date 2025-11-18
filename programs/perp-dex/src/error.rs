@@ -32,4 +32,12 @@ pub enum PerpError {
     MathOverflow,
     #[msg("Nothing to liquidate")]
     NothingToLiquidate,
+    #[msg("Invalid Oracle Price")]
+    InvalidOraclePrice,
+    #[msg("Invalid Timestamp")]
+    InvalidTimestamp,
+    #[msg("Invalid Market Config")]
+    InvalidMarketConfig,
+    #[msg("Funding not due yet")]
+    FundingNotDue,
 }
