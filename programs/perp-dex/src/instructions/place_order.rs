@@ -1,20 +1,17 @@
 use std::{ ops::{Add}};
-
 use anchor_lang::{prelude::*,};
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint,  Token, TokenAccount, Transfer},
+    token::{ Token},
 };
 use anchor_lang::solana_program::sysvar::clock::Clock;
 
-pub const MAX_HISTOY: usize = 1024;
 
-use crate::{GlobalConfig, MarketState, Order, OrderHistory, PerpError, Position, RequestQueue, RequestType, make_order_id, request_queue};
+use crate::{GlobalConfig, MarketState, Order,  PerpError, Position, RequestQueue, RequestType, UserCollateral, make_order_id};
 #[derive(Accounts)]
 pub struct PlaceOrder<'info>{
     #[account(mut)]
     pub user : Signer<'info>,
-    
     #[account(
         mut,
         seeds = [b"global_config"],
@@ -27,22 +24,13 @@ pub struct PlaceOrder<'info>{
         bump = market.bump
     )]
     pub market : Account<'info,MarketState>,
-
-    pub usdc_mint: Account<'info, Mint>,
     #[account(
         mut,
-        constraint = user_wallet_account.mint == usdc_mint.key(),
-        constraint = user_wallet_account.owner == user.key()
+        seeds = [b"user_colletral", user.key().as_ref()],
+        bump
     )]
-    pub user_wallet_account: Account<'info,TokenAccount>,
-
+    pub user_colletral : Account<'info,UserCollateral>,
     #[account(
-        mut,
-        constraint = vault_quote.mint == usdc_mint.key(),
-        constraint = vault_quote.owner == global_config.key()
-    )]
-    pub vault_quote: Account<'info, TokenAccount>,
-   #[account(
         init_if_needed,
         space = Position::INIT_SPACE,
         payer = user,
@@ -50,23 +38,12 @@ pub struct PlaceOrder<'info>{
         bump
     )]
     pub position_per_market: Account<'info, Position>,
-    
     #[account(
         mut,
         seeds = [b"request_queue"],
         bump
     )]
     pub request_queue : Account<'info,RequestQueue>,
-
-    #[account(
-        init_if_needed,
-        space = OrderHistory::INIT_SPACE,
-        payer = user,
-        seeds = [b"user_history",user.key().as_ref()],
-        bump
-    )]
-    pub order_history : Account<'info,OrderHistory>,
-
     pub system_program : Program<'info,System>,
     pub associated_token_program : Program<'info,AssociatedToken>,
     pub token_program : Program<'info,Token>
@@ -77,34 +54,26 @@ impl <'info> PlaceOrder <'info>{
         &mut self,
         order :Order
     )->Result<()>{
-    //checks user balncnace and mm blances and all checks 
     
+    let market = &mut self.market;
+    let user_colletral = &mut self.user_colletral;
+    let im_required = market.compute_initial_margin(order.clone())?;
+
+    require!(
+        user_colletral.collateral_amount>= im_required as i128,
+        PerpError::InsufficientCollateral
+    );
+    
+    let position: &mut Account<'info, Position> = &mut self.position_per_market;
+
     let request_queues = &mut self.request_queue;
-
     require!(request_queues.count<request_queues.capacity,PerpError::QueueFull);
-    
-
-
-    //trasnfer user wallet to vau
-    token::transfer(
-        CpiContext::new(
-            self.token_program.to_account_info(),
-            Transfer{
-              from:self.user_wallet_account.to_account_info(),
-              to: self.vault_quote.to_account_info(),
-              authority : self.user.to_account_info()
-            }
-        ),order.initial_margin
-    )?;
-
 
     let seq = request_queues.sequence;
     let order_id = make_order_id(order.order_type , order.side , order.limit_price ,seq);
     request_queues.sequence = seq.add(1);
 
-
     //initalise the posiotion 
-    let position = &mut self.position_per_market;
     position.owner = self.user.key();
     position.market = order.market;
     position.order_id = order_id;
@@ -112,14 +81,28 @@ impl <'info> PlaceOrder <'info>{
     position.qty = order.qty;
     position.order_type = order.order_type;
     position.status = crate::OrderStatus::Pending;
+    position.base_position = 0 ;
+    position.entry_price = 0;
+    position.realized_pnl = 0;
+    position.last_cum_funding = 0;
     position.initial_margin = order.initial_margin;
     position.leverage = order.leverage;
     position.created_at =  Clock::get()?.unix_timestamp;
+    position.updated_at = Clock::get()?.unix_timestamp;
 
-    let order_history = &mut self.order_history;
-    order_history.push_order(order.clone());
-    
-    request_queues.push(RequestType::Place(order))?;
+    let make_order = Order{
+        user:self.user.key().to_bytes(),
+        order_id : order_id,
+        side : order.side,
+        qty : order.qty,
+        order_type : order.order_type,
+        limit_price : order.limit_price,
+        initial_margin : order.initial_margin,
+        leverage : order.leverage,
+        market : order.market,
+    };
+  
+    request_queues.push(RequestType::Place(make_order))?;
 
        Ok(())
     }

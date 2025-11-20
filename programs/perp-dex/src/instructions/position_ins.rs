@@ -3,7 +3,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{ Token},
 };
-use crate::{EventQueue, MAX_TO_PROCESS, MarketState, Position, PositionManager};
+use crate::{EventQueue, MAX_TO_PROCESS, MarketState, Position, PositionManager, UserCollateral};
 
 #[derive(Accounts)]
 #[instruction(user_key : Pubkey)]
@@ -26,6 +26,12 @@ pub struct PositionIns<'info>{
         bump
     )]
     pub event_queue : Account<'info,EventQueue>,
+      #[account(
+        mut,
+        seeds = [b"user_colletral", user_position.owner.key().as_ref()],
+        bump
+    )]
+    pub user_colletral : Account<'info,UserCollateral>,
 }
 
 pub fn handler(mut ctx:Context<PositionIns>)->Result<()>{

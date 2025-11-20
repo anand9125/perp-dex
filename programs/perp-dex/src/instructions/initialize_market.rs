@@ -4,7 +4,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
 };
 
-use crate::{ASK_SLAB_CAPACITY, BID_SLAB_CAPACITY, BidAsk, EventQueue, MarketState, PerpError, RequestQueue, Slab};
+use crate::{ASK_SLAB_CAPACITY, BID_SLAB_CAPACITY, BidAsk, EventQueue, MarketState, PerpError, RequestQueue, Slab, funding};
 
 #[derive(Accounts)]
 #[instruction(market_symbol: String)]
@@ -68,10 +68,15 @@ impl<'info> InitializeMarket<'info> {
         last_oracle_ts: i64,
         im_bps: u16,
         mm_bps : u16,
-        taker_fee_bps: u16,
         oracle_band_bps: u16,
+        taker_fee_bps: u16,
+        maker_rebate_bps: u16,     
+        liq_penalty_bps: u16,   
+        liquidator_share_bps: u16,
+        max_funding_rate: i64,
         cum_funding: i64,
         last_funding_ts: i64,
+        funding_interval_secs: u32,
         tick_size: u16,
         step_size: u8,
         min_order_notional: u64,
@@ -92,14 +97,17 @@ impl<'info> InitializeMarket<'info> {
         market.last_oracle_ts = last_oracle_ts;
         market.bid = self.bids.key();
         market.asks = self.asks.key();
-        market.event_queue = self.event_queue.key();
-        market.request_queue = self.request_queue.key();
         market.im_bps = im_bps;
         market.mm_bps = mm_bps;
         market.taker_fee_bps = taker_fee_bps;
+        market.maker_fee_bps = maker_rebate_bps;
+        market.liq_penalty_bps = liq_penalty_bps;
+        market.liquidator_share_bps = liquidator_share_bps;
         market.oracle_band_bps = oracle_band_bps;
         market.cum_funding = cum_funding;
         market.last_funding_ts = last_funding_ts;
+        market.max_funding_rate =max_funding_rate;
+        market.funding_interval_secs = funding_interval_secs;
         market.tick_size = tick_size;
         market.step_size = step_size;
         market.min_order_notional = min_order_notional;

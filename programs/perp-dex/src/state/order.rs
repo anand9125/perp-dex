@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{ MAX_HISTOY, OrderType, Side, order};
+use crate::{  OrderType, Side, order};
 
 #[account]
 #[derive(InitSpace)]
@@ -33,26 +33,4 @@ pub struct MatchedOrder {
     pub fill_qty: u64,
     pub side: Side,
     pub timestamp: i64,
-}
-
-#[account]
-#[derive(InitSpace)]
-pub struct OrderHistory {
-   pub user : Pubkey,
-   pub history : [Order;MAX_HISTOY],
-   pub head : u64,
-   pub count : u64,
-   pub capacity : u64
-}
-
-impl OrderHistory {
-   pub fn push_order (&mut self,order:Order){
-      let idx = (self.head % self.capacity) as usize;
-      self.history[idx] = order;
-      self.head =(self.head+1) % self.capacity;
-      if self.count <self.capacity{
-         self.count += 1;
-      }
-   }
-    
 }

@@ -40,4 +40,11 @@ pub enum PerpError {
     InvalidMarketConfig,
     #[msg("Funding not due yet")]
     FundingNotDue,
+    #[msg("Order notional too small")]
+    OrderNotionalTooSmall,
+    #[msg("Insufficient collateral")]
+    InsufficientCollateral,
+    #[msg("Withdraw Would Liquidate")]
+    WithdrawWouldLiquidate
+    
 }

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{FUNDING_SCALE, MatchedOrder, PerpError, Side};
+use crate::{FUNDING_SCALE, MatchedOrder, PerpError, Side, user_colletral};
 
 pub struct PositionManager;
 
@@ -10,6 +10,7 @@ impl PositionManager{
         event: MatchedOrder,
     ) -> Result<()> {
         let position = &mut ctx.user_position;
+        let user_colletral = &mut ctx.user_colletral;
         
         let pos_qty = position.base_position as i64; 
         let fill_qty = if event.side == Side::Buy {
@@ -22,15 +23,17 @@ impl PositionManager{
 
         if pos_qty == 0 {
             position.base_position = fill_qty;
-            position.entry_price = event.fill_price; 
+            position.entry_price = event.fill_price;
+            position.realized_pnl = 0; 
             position.last_cum_funding = ctx.market.cum_funding;
             position.updated_at = Clock::get()?.unix_timestamp;
             return Ok(());
         }
+
         //Add the funding payment calculation here
         let pos_last_cum = position.last_cum_funding;
         let delta_funding = ctx.market.cum_funding.checked_sub(pos_last_cum).ok_or(PerpError::MathOverflow)?;
-       
+        // funding_payment_raw = (delta_funding * pos_qty) / SCALE
         let funding_payment = (delta_funding as i128)
             .checked_mul(pos_qty as i128)
             .and_then(|v| v.checked_div(FUNDING_SCALE))
@@ -38,10 +41,14 @@ impl PositionManager{
         
         let new_realized_after_funding = (position.realized_pnl as i128)
             .checked_sub(funding_payment)
-            .ok_or(PerpError::MathOverflow)?;
+            .ok_or(PerpError::MathOverflow)?; // same as adding payment = -funding_payment
     
         position.realized_pnl = i64::try_from(new_realized_after_funding)
             .map_err(|_|PerpError::MathOverflow)?;
+        
+        user_colletral.collateral_amount = user_colletral.collateral_amount
+            .checked_sub(funding_payment)  //moving funding inside the user_colletral
+            .ok_or(PerpError::MathOverflow)?;
 
         position.last_cum_funding = ctx.market.cum_funding;
 
@@ -99,6 +106,10 @@ impl PositionManager{
             position.realized_pnl = i64::try_from(new_realized_i128)
                 .map_err(|_| PerpError::MathOverflow)?;
 
+            user_colletral.collateral_amount = user_colletral.collateral_amount
+                .checked_add(realized)
+                .ok_or(PerpError::MathOverflow)?;
+
 
             position.base_position = pos_qty + fill_qty;
             position.updated_at = Clock::get()?.unix_timestamp;
@@ -118,6 +129,10 @@ impl PositionManager{
                 .ok_or(PerpError::MathOverflow)?;
 
             let new_realized_i128 = (position.realized_pnl as i128)
+                .checked_add(realized_i128)
+                .ok_or(PerpError::MathOverflow)?;
+
+            user_colletral.collateral_amount = user_colletral.collateral_amount
                 .checked_add(realized_i128)
                 .ok_or(PerpError::MathOverflow)?;
 
@@ -147,6 +162,10 @@ impl PositionManager{
             .ok_or(PerpError::MathOverflow)?;
 
         let new_realized_i128 = (position.realized_pnl as i128)
+            .checked_add(realized_i128)
+            .ok_or(PerpError::MathOverflow)?;
+
+        user_colletral.collateral_amount = user_colletral.collateral_amount
             .checked_add(realized_i128)
             .ok_or(PerpError::MathOverflow)?;
 

@@ -1,6 +1,8 @@
+use std::io::Seek;
+
 use anchor_lang::prelude::*;
 
-use crate::PerpError;
+use crate::{Order, PerpError, order};
 
 #[account]
 #[derive(InitSpace)]
@@ -14,13 +16,16 @@ pub struct MarketState{
 
     pub bid : Pubkey,
     pub asks : Pubkey,
-    pub event_queue : Pubkey,
-    pub request_queue : Pubkey,
+  
     // risk/fees (overrides)
     pub im_bps : u16,
     pub mm_bps :u16,
-    pub taker_fee_bps : u16,
-    pub oracle_band_bps :u16,
+
+    pub taker_fee_bps :u16,
+    pub maker_fee_bps : u16,
+    pub liquidator_share_bps :u16, //percentage of the liquidation penalty that goes to the liquidator
+    pub liq_penalty_bps:u16,//percentage charged when a user is liquidated. Often part goes to liquidators, part to the insurance fund.
+    pub oracle_band_bps: u16,  //oracle_band_bps defines the maximum allowed difference after that trading will stop and perp price stay between these 
 
     pub cum_funding:i64,
     pub last_funding_ts :i64,
@@ -33,7 +38,6 @@ pub struct MarketState{
     pub bump:u8
 
 }
-
 impl MarketState{
     pub fn get_mark_price(&self)->Result<u128>{
         //For simplicity using last oracle price as mark price
@@ -42,4 +46,27 @@ impl MarketState{
         }
         Ok(self.last_oracle_price as u128)
     }
+    pub fn compute_initial_margin(&self,order:Order)->Result<u128>{
+        let mark_price = self.get_mark_price()?;
+
+        let notional = (order.qty as u128)
+            .checked_mul(mark_price)
+            .ok_or(PerpError::MathOverflow)?;
+
+        require!(
+            notional >= self.min_order_notional as u128,
+            PerpError::OrderNotionalTooSmall
+        );
+
+        let im_bps = self.im_bps as u128;
+
+        let im_required = notional
+            .checked_mul(im_bps)
+            .and_then(|v|v.checked_div(10000))
+            .ok_or(PerpError::MathOverflow)?;
+
+        Ok(im_required)   
+    }
 }
+
+

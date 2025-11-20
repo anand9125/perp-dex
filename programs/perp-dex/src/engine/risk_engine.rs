@@ -36,10 +36,10 @@ impl RiskEngine {
       //motional*mmr
         pub fn maintenance_margin(
             qty_signed: i128,
-            price: u128,
+            mark_price: u128,
             mmr: Ratio,
         ) -> Result<u128> {
-            let not = RiskEngine::notional(qty_signed, price)?;
+            let not = RiskEngine::notional(qty_signed, mark_price)?;
 
             let x = not
                 .checked_mul(mmr.num)
@@ -53,26 +53,25 @@ impl RiskEngine {
         //This function computes your account health, which determines whether the trader is safe or ready for liquidation.
         pub fn account_health_single( 
             collateral: i128,
-            realized_pnl : i128,
             qty_signed: i128,
             entry_price:u128,
             mark_price: u128,
             mmr: Ratio
         )->Result<i128>{
             let unrealized_pnl = RiskEngine::unrealized_pnl(qty_signed, entry_price, mark_price)?;
-            let maintance_margin = RiskEngine::maintenance_margin(qty_signed, entry_price, mmr)? as i128;
+            let maintance_margin = RiskEngine::maintenance_margin(qty_signed, mark_price, mmr)? as i128;
 
             collateral
-                .checked_add(realized_pnl)
-                .and_then(|v|v.checked_add(unrealized_pnl))
-                .and_then(|v|v.checked_sub(maintance_margin))
-                .ok_or(PerpError::MathOverflow.into())
+                .checked_add(unrealized_pnl)
+                .and_then(|v| v.checked_sub(maintance_margin))
+                .ok_or_else(|| error!(PerpError::MathOverflow))
+
+            //user collateral.colletral(realized and funding included everytime ) + unrealized pnl - maintenance margin 
         }
 
 
         pub fn is_liquidatable_single(
             collateral: i128,
-            realized_pnl : i128,
             qty_signed: i128,
             entry_price:u128,
             mark_price: u128,
@@ -80,7 +79,6 @@ impl RiskEngine {
         ) -> Result<bool> {
             let health = RiskEngine::account_health_single(
                 collateral,
-                realized_pnl,
                 qty_signed,
                 entry_price,
                 mark_price,
