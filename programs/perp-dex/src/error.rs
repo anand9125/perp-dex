@@ -45,6 +45,8 @@ pub enum PerpError {
     #[msg("Insufficient collateral")]
     InsufficientCollateral,
     #[msg("Withdraw Would Liquidate")]
-    WithdrawWouldLiquidate
+    WithdrawWouldLiquidate,
+    #[msg("InvalidSymbol")]
+    InvalidSymbol
     
 }

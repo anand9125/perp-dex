@@ -1,6 +1,3 @@
-use anchor_lang::prelude::*;
-
-
 #[derive(Clone,Copy,Debug)]
 pub struct Ratio {
     pub num: u128,

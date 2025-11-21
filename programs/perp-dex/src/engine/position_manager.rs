@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{FUNDING_SCALE, MatchedOrder, PerpError, Side, user_colletral};
+use crate::{FUNDING_SCALE, MatchedOrder, PerpError, Side};
 
 pub struct PositionManager;
 

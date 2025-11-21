@@ -58,4 +58,3 @@ pub enum OrderStatus {
     Cancelled,      // user cancelled before fill
 }
 
-

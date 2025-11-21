@@ -21,11 +21,78 @@ declare_id!("6FFcqM61UALXUBeXPDQw1J8MLH9r9T5cTsV3uFxQdqLK");
 
 #[program]
 pub mod perp_dex {
+
     use super::*;
 
-    pub fn initialize_market(ctx: Context<InitializeMarket>) -> Result<()> {
-        
+    pub fn initalise_request_queue(
+        ctx:Context<InitaliseRequestQueues>
+    )->Result<()>{
         Ok(())
     }
+
+    pub fn initalise_global_config(
+        ctx: Context<InitializeGlobalConfig>,
+        is_paused:bool,
+        funding_interval_secs:u32
+    )->Result<()>{
+        ctx.accounts.process(is_paused, funding_interval_secs, &ctx.bumps)?;
+        Ok(())
+    }
+
+    pub fn initialize_market(
+        ctx: Context<InitializeMarket>,
+        market_symbol:Vec<u8>,
+        params:MarketParams
+    ) -> Result<()> {
+        ctx.accounts.process(market_symbol,params,&ctx.bumps)?;
+        Ok(())
+    }
+
+    pub fn place_order(
+        ctx:Context<PlaceOrder>,
+        order:Order
+    )->Result<()>{
+        ctx.accounts.process(order)?;
+        Ok(())
+    }
+
+    pub fn process_place_order(
+        ctx:Context<ProcessOrder>
+    )->Result<()>{
+        ctx.accounts.process()?;
+        Ok(())
+    }
+    
+    pub fn position_manager(
+        ctx:Context<PositionIns>
+    )->Result<()>{
+        ctx.accounts.process()?;
+        Ok(())
+    }
+
+    pub fn liquidate(
+        ctx:Context<Liquidation>
+    )->Result<()>{
+        ctx.accounts.process()?;
+        Ok(())
+    }
+
+    pub fn deposit_colletral(
+        ctx:Context<DepositColletral>,
+        amount:u64
+    )->Result<()>{
+        ctx.accounts.process(amount)?;
+        Ok(())
+    }
+
+    pub fn withdraw(
+        ctx:Context<Withdraw>,
+        withdraw_amount:u64
+    )->Result<()>{
+        ctx.accounts.process(withdraw_amount)?;
+        Ok(())
+    }
+
+
 
 }

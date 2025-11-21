@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 use crate::{MAX_REQUESTS, MatchedOrder,PerpError};
 
 #[account]
-#[derive(InitSpace)]
  pub struct EventQueue {
     pub head: u16,       // index for crank to read
     pub tail: u16,       // index for users to write
@@ -12,6 +11,13 @@ use crate::{MAX_REQUESTS, MatchedOrder,PerpError};
     pub events: [MatchedOrder;MAX_REQUESTS],  //requests is an array
     pub sequence : u64
 
+}
+impl EventQueue {
+    pub const SIZE: usize =
+        8 +                           // discriminator
+        16 +                          // head, tail, count, capacity, sequence
+        (MatchedOrder::SIZE * MAX_REQUESTS)
+        + 512;                        // safety padding
 }
 
 impl EventQueue {
@@ -46,5 +52,4 @@ impl EventQueue {
     }
     
 }
-
 

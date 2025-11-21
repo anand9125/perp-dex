@@ -2,7 +2,6 @@ use anchor_lang::prelude::*;
 use crate::{CancelOrder, MAX_REQUESTS, Order };
 use crate::PerpError;
 #[account]
-#[derive(InitSpace)]
 pub struct RequestQueue {
     pub head: u16,
     pub tail: u16,
@@ -12,11 +11,22 @@ pub struct RequestQueue {
     pub sequence: u64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone,InitSpace)]
+impl RequestQueue {
+   pub const SIZE: usize = 8 + 16 + (RequestType::SIZE * MAX_REQUESTS) + 256;
+}
+
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
 pub enum RequestType {
     Place(Order),
     Cancel(CancelOrder),
 }
+
+impl RequestType {
+    pub const SIZE: usize = 1 + 107; // 108 total
+}
+
+
 impl RequestQueue {
 
     pub fn tail_idx(&self) -> usize {

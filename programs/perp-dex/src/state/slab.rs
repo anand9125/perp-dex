@@ -71,17 +71,16 @@ impl InnerNode {
 
 
 
-
 #[derive(Clone, Copy, Zeroable, Pod, Debug)]
-#[repr(C)]
+#[repr(C, align(16))]
 pub struct LeafNode {
-    pub tag: u32,
-    pub fee_tier: u8,
-    pub reserved: [u8; 3],
-    pub key: u128,
-    pub owner: [u8; 32],
-    pub quantity: u64,
-    pub timestamp: i64,
+    pub key: u128,           
+    pub owner: [u8; 32],     
+    pub quantity: u64,       
+    pub timestamp: i64,      
+    pub tag: u32,            
+    pub fee_tier: u8,        
+    pub reserved: [u8; 11],
 }
 
 impl LeafNode {
@@ -93,34 +92,30 @@ impl LeafNode {
         timestamp: i64,
     ) -> Self {
         Self {
-            tag: LEAF_NODE,
-            fee_tier,
-            reserved: [0; 3],
             key,
             owner,
             quantity,
             timestamp,
+            tag: LEAF_NODE,
+            fee_tier,
+            reserved: [0u8; 11],
         }
     }
 
-    /// Extract price from order ID (high 64 bits)
     #[inline]
     pub fn price(&self) -> u64 {
         (self.key >> 64) as u64
     }
-
-    /// Extract sequence number from order ID (low 64 bits)
     #[inline]
     pub fn sequence_number(&self) -> u64 {
         self.key as u64
     }
-
-    /// Create order key from price and sequence
     #[inline]
     pub fn price_key(price: u64, sequence: u64) -> u128 {
         ((price as u128) << 64) | (sequence as u128)
     }
 }
+
 
 #[derive(Copy,Clone,Pod,Zeroable)]
 #[repr(C)]

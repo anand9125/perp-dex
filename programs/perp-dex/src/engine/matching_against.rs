@@ -62,7 +62,7 @@ pub fn match_against_book<'info>(
             user:order.user,
             fill_price:fill_price,
             fill_qty:fill_qty,
-            side:order.side,
+            side:order.side.clone(),
             timestamp:Clock::get()?.unix_timestamp
         };
         match match_type {

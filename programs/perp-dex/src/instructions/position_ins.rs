@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{ Token},
-};
-use crate::{EventQueue, MAX_TO_PROCESS, MarketState, Position, PositionManager, UserCollateral};
 
+use crate::{EventQueue, MAX_TO_PROCESS, MarketState, Position, PositionManager, UserCollateral};
+use anchor_spl::{
+    token::{ Token},
+    associated_token::AssociatedToken,
+};
 #[derive(Accounts)]
 #[instruction(user_key : Pubkey)]
 pub struct PositionIns<'info>{
@@ -32,24 +32,31 @@ pub struct PositionIns<'info>{
         bump
     )]
     pub user_colletral : Account<'info,UserCollateral>,
-}
+    pub system_program : Program<'info,System>,
+    pub associated_token_program : Program<'info, AssociatedToken>,
+    pub token_program : Program<'info,Token>
 
-pub fn handler(mut ctx:Context<PositionIns>)->Result<()>{
-   
+}
+    
+impl <'info> PositionIns<'info>{
+    pub fn process(
+        &mut self
+    )->Result<()>{
         let processed:u16 = 0;
-        let event_count =  ctx.accounts.event_queue.count;
+        let event_count =  self.event_queue.count;
         while event_count > 0 && processed< MAX_TO_PROCESS{
             let event ={
-                let eq = &mut ctx.accounts.event_queue;
+                let eq = &mut self.event_queue;
                 eq.pop()?
             };
             PositionManager::apply_fill(
-                 &mut ctx.accounts,
+                 self,
                 event
             )?;
-            processed.wrapping_add(1);
+           let _= processed.wrapping_add(1);
 
         }
         Ok(())
- }
-    
+    }
+
+}

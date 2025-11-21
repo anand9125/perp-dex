@@ -4,7 +4,7 @@ use anchor_spl::{
     token::{self, Mint, Token, TokenAccount, Transfer},
 };
 use crate::{
-    BidAsk, EventQueue, FUNDING_SCALE, GlobalConfig, MarketState, MatchingType, Order, OrderType, PerpError, Position, Ratio, RiskEngine, Side, UserCollateral, match_against_book, user_colletral
+    BidAsk, EventQueue, FUNDING_SCALE, GlobalConfig, MarketState, MatchingType, Order, OrderType, PerpError, Position, Ratio, RiskEngine, Side, UserCollateral, match_against_book,
 };
 
 #[derive(Accounts)]

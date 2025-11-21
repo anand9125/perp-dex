@@ -1,8 +1,6 @@
-use std::io::Seek;
-
 use anchor_lang::prelude::*;
 
-use crate::{Order, PerpError, order};
+use crate::{Order, PerpError};
 
 #[account]
 #[derive(InitSpace)]
@@ -70,3 +68,26 @@ impl MarketState{
 }
 
 
+
+
+
+#[derive(AnchorDeserialize, AnchorSerialize)]
+pub struct MarketParams {
+    pub oracle_pubkey: Pubkey,
+    pub last_oracle_price: i64,
+    pub last_oracle_ts: i64,
+    pub im_bps: u16,
+    pub mm_bps: u16,
+    pub oracle_band_bps: u16,
+    pub taker_fee_bps: u16,
+    pub maker_rebate_bps: u16,
+    pub liq_penalty_bps: u16,
+    pub liquidator_share_bps: u16,
+    pub max_funding_rate: i64,
+    pub cum_funding: i64,
+    pub last_funding_ts: i64,
+    pub funding_interval_secs: u32,
+    pub tick_size: u16,
+    pub step_size: u8,
+    pub min_order_notional: u64,
+}

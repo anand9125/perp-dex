@@ -4,7 +4,7 @@ use anchor_spl::{
     token::{ Token},
     associated_token::AssociatedToken,
 };
-use crate::{BidAsk, EventQueue, MAX_TO_PROCESS, MarketState, MatchingEngine, Order, OrderType, PerpError, RequestQueue, RequestType, Side, Slab};
+use crate::{BidAsk, EventQueue, MAX_TO_PROCESS, MarketState, MatchingEngine,  RequestQueue, RequestType};
 
 #[derive(Accounts)]
 #[instruction(market_symbol:String)]
@@ -45,28 +45,31 @@ pub struct ProcessOrder <'info>{
     pub associated_token_program : Program<'info, AssociatedToken>,
     pub token_program : Program<'info,Token>
 }
-pub fn handler(mut ctx: Context<ProcessOrder>) -> Result<()> {
-    let processed = 0;
+impl <'info> ProcessOrder<'info> {
+    pub fn process(
+        &mut self
+    )->Result<()>{
+      let processed = 0;
 
-    while ctx.accounts.request_queue.count > 0 && processed < MAX_TO_PROCESS {
+    while self.request_queue.count > 0 && processed < MAX_TO_PROCESS {
          let request = {
-            let rq = &mut ctx.accounts.request_queue;
+            let rq = &mut self.request_queue;
             rq.pop()?
         };
         match request {
             RequestType::Place(place_order)=>{
-                MatchingEngine::process_place_order(&mut ctx.accounts, place_order)?; 
+                MatchingEngine::process_place_order(self, place_order)?; 
             }
             RequestType::Cancel(cancel_order)=>{
-                MatchingEngine::process_cancel_order(&mut ctx.accounts, cancel_order)?;
+                MatchingEngine::process_cancel_order( self, cancel_order)?;
             }
             
         }
           // FIXED
-        processed.wrapping_add(1);
+        let _ = processed.wrapping_add(1);
     }
 
     Ok(())
+    }
+    
 }
-
-

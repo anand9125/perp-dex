@@ -32,7 +32,7 @@ pub struct PlaceOrder<'info>{
     pub user_colletral : Account<'info,UserCollateral>,
     #[account(
         init_if_needed,
-        space = Position::INIT_SPACE,
+        space = 8,
         payer = user,
         seeds = [b"position", market.symbol.as_bytes(), user.key().as_ref()],
         bump
