@@ -1,55 +1,83 @@
 use anchor_lang::prelude::*;
 
-use crate::{MAX_REQUESTS, MatchedOrder,PerpError};
+use crate::{MAX_REQUESTS, MatchedOrder,PerpError, slot::{EVENT_SLOT_LEN, EventSlot}};
 
-#[account]
- pub struct EventQueue {
-    pub head: u16,       // index for crank to read
-    pub tail: u16,       // index for users to write
-    pub count: u16,      // current active requests
-    pub capacity: u16,   // total slots
-    pub events: [MatchedOrder;MAX_REQUESTS],  //requests is an array
-    pub sequence : u64
-
-}
-impl EventQueue {
-    pub const SIZE: usize =
-        8 +                           // discriminator
-        16 +                          // head, tail, count, capacity, sequence
-        (MatchedOrder::SIZE * MAX_REQUESTS)
-        + 512;                        // safety padding
+#[account(zero_copy)]
+#[repr(C)]
+pub struct EventQueue {
+    pub head: u16,
+    pub tail: u16,
+    pub count: u16,
+    pub capacity: u16,
+    pub sequence: u64,
+    pub slots: [EventSlot; MAX_REQUESTS],
 }
 
 impl EventQueue {
-       pub fn tail_idx(&self) -> usize {
-        (self.tail % self.capacity) as usize
+    pub const SIZE: usize = core::mem::size_of::<EventQueue>();
+}
+
+impl EventQueue {
+    pub fn init(&mut self) {
+        self.head = 0;
+        self.tail = 0;
+        self.count = 0;
+        self.capacity = MAX_REQUESTS as u16;
+        self.sequence = 0;
+
+        for slot in self.slots.iter_mut() {
+            slot.is_occupied = 0;
+            slot._pad = [0; 7];
+            slot.data = [0; EVENT_SLOT_LEN];
+        }
+    }
+    fn encode_into_slot(slot: &mut EventSlot, ev: &MatchedOrder) -> Result<()> {
+        let encoded = ev.try_to_vec()
+            .map_err(|_| error!(PerpError::SerializationFailed))?;
+
+        require!(encoded.len() <= EVENT_SLOT_LEN, PerpError::SerializationFailed);
+
+        slot.data[..encoded.len()].copy_from_slice(&encoded);
+        if encoded.len() < EVENT_SLOT_LEN {
+            slot.data[encoded.len()..].fill(0);
+        }
+        slot.is_occupied = 1;
+        Ok(())
     }
 
-    pub fn head_idx(&self) -> usize {
-        (self.head % self.capacity) as usize
+    fn decode_from_slot(slot: &EventSlot) -> Result<MatchedOrder> {
+        require!(slot.is_occupied == 1, PerpError::QueueEmpty);
+
+        MatchedOrder::try_from_slice(&slot.data)
+            .map_err(|_| error!(PerpError::DeserializationFailed))
     }
-    pub fn push(&mut self, event: MatchedOrder) -> Result<()> {
-        require!(self.count < self.capacity, PerpError::QueueFull);
+     pub fn push(&mut self, event: &MatchedOrder) -> Result<()> {
+        require!((self.count as usize) < MAX_REQUESTS, PerpError::QueueFull);
 
-        let idx = self.tail_idx();
-        self.events[idx] = event;
+        let idx = self.tail as usize;
+        let slot = &mut self.slots[idx];
 
-        self.tail = self.tail.wrapping_add(1);
-        self.count = self.count.wrapping_add(1);
+        Self::encode_into_slot(slot, event)?;
+
+        self.tail = (self.tail + 1) % self.capacity;
+        self.count += 1;
         self.sequence += 1;
 
         Ok(())
     }
-    pub fn pop(&mut self)->Result<MatchedOrder>{
-        require!(self.count>0,PerpError::QueueEmpty);
 
-        let idx = self.head_idx();
-        let match_order = self.events[idx].clone();
+    pub fn pop(&mut self) -> Result<MatchedOrder> {
+        require!(self.count > 0, PerpError::QueueEmpty);
 
-        self.head = self.head.wrapping_add(1);
-        self.count = self.count.wrapping_sub(1);
-        Ok(match_order)
+        let idx = self.head as usize;
+        let slot = &mut self.slots[idx];
+
+        let res = Self::decode_from_slot(slot)?;
+
+        slot.is_occupied = 0;
+        self.head = (self.head + 1) % self.capacity;
+        self.count -= 1;
+
+        Ok(res)
     }
-    
 }
-

@@ -17,7 +17,7 @@ pub struct PlaceOrder<'info>{
         seeds = [b"global_config"],
         bump = global_config.bump
     )]
-    pub global_config : Account<'info,GlobalConfig>,
+    pub global_config : Box<Account<'info,GlobalConfig>>,
     #[account(
         mut,
         seeds = [b"market",market.symbol.as_bytes()],
@@ -43,7 +43,7 @@ pub struct PlaceOrder<'info>{
         seeds = [b"request_queue"],
         bump
     )]
-    pub request_queue : Account<'info,RequestQueue>,
+    pub request_queue : AccountLoader<'info,RequestQueue>,
     pub system_program : Program<'info,System>,
     pub associated_token_program : Program<'info,AssociatedToken>,
     pub token_program : Program<'info,Token>
@@ -66,7 +66,7 @@ impl <'info> PlaceOrder <'info>{
     
     let position: &mut Account<'info, Position> = &mut self.position_per_market;
 
-    let request_queues = &mut self.request_queue;
+    let request_queues = &mut self.request_queue.load_mut()?;
     require!(request_queues.count<request_queues.capacity,PerpError::QueueFull);
 
     let seq = request_queues.sequence;
@@ -101,8 +101,9 @@ impl <'info> PlaceOrder <'info>{
         leverage : order.leverage,
         market : order.market,
     };
+    let req = RequestType::Place(make_order);
   
-    request_queues.push(RequestType::Place(make_order))?;
+    request_queues.push(&req)?;
 
        Ok(())
     }

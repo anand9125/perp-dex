@@ -47,6 +47,13 @@ pub enum PerpError {
     #[msg("Withdraw Would Liquidate")]
     WithdrawWouldLiquidate,
     #[msg("InvalidSymbol")]
-    InvalidSymbol
-    
+    InvalidSymbol,
+    #[msg("SerializationFailed")]
+    SerializationFailed,
+    #[msg("DeserializationFailed")]
+    DeserializationFailed   ,
+    #[msg("Unauthorized")]
+    Unauthorized,
+    #[msg("InvalidVaultQuoteMint ")]
+    InvalidVaultQuoteMint 
 }

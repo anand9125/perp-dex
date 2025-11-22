@@ -25,7 +25,7 @@ pub struct PositionIns<'info>{
         seeds = [b"event_queue"],
         bump
     )]
-    pub event_queue : Account<'info,EventQueue>,
+    pub event_queue : AccountLoader<'info,EventQueue>,
       #[account(
         mut,
         seeds = [b"user_colletral", user_position.owner.key().as_ref()],
@@ -42,20 +42,27 @@ impl <'info> PositionIns<'info>{
     pub fn process(
         &mut self
     )->Result<()>{
-        let processed:u16 = 0;
-        let event_count =  self.event_queue.count;
-        while event_count > 0 && processed< MAX_TO_PROCESS{
-            let event ={
-                let eq = &mut self.event_queue;
-                eq.pop()?
+        let mut processed:u16 = 0;
+        while processed < MAX_TO_PROCESS {
+            let event_opt = {
+                let mut eq = self.event_queue.load_mut()?;
+                if eq.count == 0 {
+                    None
+                } else {
+                    Some(eq.pop()?)
+                }
             };
-            PositionManager::apply_fill(
-                 self,
-                event
-            )?;
-           let _= processed.wrapping_add(1);
-
-        }
+            match event_opt {
+                Some(event) => {
+                    PositionManager::apply_fill(
+                        self,
+                        event
+                    )?;
+                }
+                None => break,
+            }
+            processed += 1;
+        };
         Ok(())
     }
 

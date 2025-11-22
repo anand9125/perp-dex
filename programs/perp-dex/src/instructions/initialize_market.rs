@@ -13,11 +13,11 @@ pub struct InitializeMarket<'info> {
     pub authority: Signer<'info>,
 
    #[account(
-    init_if_needed,
-    payer = authority,
-    space = 8 + MarketState::INIT_SPACE,
-    seeds = [b"market", market_symbol.as_slice()],
-    bump
+        init_if_needed,
+        payer = authority,
+        space = 8 + MarketState::INIT_SPACE,
+        seeds = [b"market", market_symbol.as_slice()],
+        bump
     )]
     pub market: Account<'info, MarketState>,
 
@@ -38,12 +38,6 @@ pub struct InitializeMarket<'info> {
         bump
     )]
     pub asks: Account<'info, BidAsk>,
-
-    #[account(mut, seeds = [b"request_queue"], bump)]
-    pub request_queue: Account<'info, RequestQueue>,
-
-    #[account(mut, seeds = [b"event_queue"], bump)]
-    pub event_queue: Account<'info, EventQueue>,
 
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,

@@ -15,7 +15,7 @@ impl PositionManager{
         let pos_qty = position.base_position as i64; 
         let fill_qty = if event.side == Side::Buy {
             event.fill_qty as i64
-        } else {
+          }else {
             -(event.fill_qty as i64)
         };
         let entry = position.entry_price as i128;

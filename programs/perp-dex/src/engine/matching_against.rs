@@ -5,9 +5,10 @@ use crate::{ MatchedOrder, MatchingType, Order, OrderType, Side, Slab, event_que
 pub fn match_against_book<'info>(
     book: &mut Slab,
     order: &Order,
-    evnet_queue: &mut Account<'info, event_queue::EventQueue>,
+    evnet_queue: &mut AccountLoader<'info, event_queue::EventQueue>,
     match_type:MatchingType,
 ) -> Result<(u64,Vec<MatchedOrder>)> {
+    let evnet_queue = &mut evnet_queue.load_mut()?;
 
     let mut remaining_qty = order.qty;
     let mut taker_fills : Vec<MatchedOrder> =Vec::new();
@@ -67,11 +68,11 @@ pub fn match_against_book<'info>(
         };
         match match_type {
             MatchingType::Normal=>{
-                evnet_queue.push(taker_event)?;
-                evnet_queue.push(maker_event)?;
+                evnet_queue.push(&taker_event)?;
+                evnet_queue.push(&maker_event)?;
             }
             MatchingType::Liquidation=>{
-                evnet_queue.push(maker_event)?;
+                evnet_queue.push(&maker_event)?;
                 taker_fills.push(taker_event);
             }
         };

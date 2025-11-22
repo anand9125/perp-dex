@@ -25,3 +25,6 @@ pub use slab::*;
 
 pub mod user_colletral;
 pub use user_colletral::*;
+
+pub mod slot;
+pub use  slab::*;

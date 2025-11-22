@@ -5,7 +5,7 @@ use anchor_spl::{
     token::{ self, Mint, Token, TokenAccount, Transfer},
 };
 
-use crate::{PerpError, UserCollateral};
+use crate::{GlobalConfig, PerpError, UserCollateral, request_queue};
 
 #[derive(Accounts)]
 
@@ -17,14 +17,21 @@ pub struct DepositColletral <'info>{
 
     #[account(
         mut,
-        constraint = user_wallet_account.mint == usdc_mint.key(),
-        constraint = user_wallet_account.owner == user.key()
+        constraint = user_wallet_account.mint == usdc_mint.key()@PerpError::InvalidVaultQuoteMint,
+        constraint = user_wallet_account.owner == user.key()    @PerpError::Unauthorized
     )]
     pub user_wallet_account: Account<'info,TokenAccount>,
+    #[account(
+        mut,
+        seeds = [b"global_config"],
+        bump,
+    )]
+    pub global_config: Box<Account<'info, GlobalConfig>>,
 
     #[account(
         mut,
-        constraint = vault_quote.mint == usdc_mint.key(),
+        constraint = vault_quote.mint == usdc_mint.key()       @PerpError::InvalidVaultQuoteMint,          
+        constraint = vault_quote.owner == global_config.key()  @PerpError::Unauthorized
     )]
     pub vault_quote: Account<'info, TokenAccount>,
     #[account(
@@ -46,6 +53,7 @@ impl <'info> DepositColletral <'info>{
         amount:u64
     )->Result<()>{
         require!(amount>0,crate::PerpError::InvalidAmount);
+       
 
         // Transfer USDC from user to vault
         token::transfer(

@@ -45,7 +45,7 @@ pub struct Liquidation<'info> {
         seeds = [b"event_queue"],
         bump
     )]
-    pub event_queue: Account<'info, EventQueue>,
+    pub event_queue: AccountLoader<'info, EventQueue>,
 
     
     #[account(
