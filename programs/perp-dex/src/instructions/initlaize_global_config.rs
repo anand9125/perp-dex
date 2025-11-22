@@ -3,9 +3,9 @@ use anchor_spl::{
     token::{Mint, Token, TokenAccount},
     associated_token::AssociatedToken,
 };
+pub const MAX_REQUESTS:usize = 2;
 
-
-use crate::{CancelOrder, EventQueue, GlobalConfig, Order, OrderType, PerpError, RequestQueue, RequestType, Side};
+use crate::{ GlobalConfig, PerpError, RequestQueue};
 
 #[derive(Accounts)]
 pub struct InitializeGlobalConfig<'info> {
@@ -51,6 +51,22 @@ pub struct InitializeGlobalConfig<'info> {
         associated_token::authority = authority
     )]
     pub fee_pool: Account<'info, TokenAccount>,
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = RequestQueue::SIZE,
+        seeds = [b"request_queue"],
+        bump
+    )]
+    pub request_queues: Account<'info,RequestQueue>,
+    //  #[account(
+    //     init_if_needed,
+    //     payer = authority,
+    //     space = EventQueue::SIZE,
+    //     seeds = [b"event_queue"],
+    //     bump
+    // )]
+    // pub event_queues: Account<'info,EventQueue>,
 
   
 
@@ -68,29 +84,35 @@ impl<'info> InitializeGlobalConfig<'info> {
         bump: &InitializeGlobalConfigBumps,
     ) -> Result<()> {
 
-   
-   
-
         let global_config = &mut self.global_config;
-
-        msg!("DBG: Step 1 — Checking authorization");
         require!(
             global_config.authority == Pubkey::default()
                 || global_config.authority == self.authority.key(),
             PerpError::NotAuthorized
         );
-
-        msg!("DBG: Step 2 — Writing to GlobalConfig");
+    
         global_config.authority = self.authority.key();
         global_config.vault_quote = self.vault_quote.key();
-        // global_config.insurance_fund = self.insurance_fund.key();
-        // global_config.fee_pool = self.fee_pool.key();
-        // global_config.request_queue = self.request_queue.key();
+        global_config.insurance_fund = self.insurance_fund.key();
+        global_config.fee_pool = self.fee_pool.key();
+  //      global_config.request_queue = self.request_queues.key();
+    //    global_config.event_queue = self.event_queues.key();
         global_config.trading_paused = is_paused;
         global_config.funding_interval_secs = funding_interval_secs;
         global_config.bump = bump.global_config;
 
-     
+
+        // let request_queues =  &mut self.request_queues;
+        // request_queues.head = 0;
+        // request_queues.tail = 0;
+        // request_queues.sequence = 0;
+        // request_queues.capacity = MAX_REQUESTS as u16;
+
+        // let event_queuse = &mut self.event_queues;
+        // event_queuse.head = 0;
+        // event_queuse.tail = 0;
+        // event_queuse.sequence = 0;
+        // event_queuse.capacity = MAX_REQUESTS as u16;
    
 
         msg!("DBG: Exiting InitializeGlobalConfig::process");

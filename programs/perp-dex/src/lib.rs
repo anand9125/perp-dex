@@ -24,12 +24,6 @@ pub mod perp_dex {
 
     use super::*;
 
-    pub fn initalise_request_queue(
-        ctx:Context<InitaliseRequestQueues>
-    )->Result<()>{
-        Ok(())
-    }
-
     pub fn initalise_global_config(
         ctx: Context<InitializeGlobalConfig>,
         is_paused:bool,

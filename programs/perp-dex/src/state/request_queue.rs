@@ -12,7 +12,7 @@ pub struct RequestQueue {
 }
 
 impl RequestQueue {
-   pub const SIZE: usize = 8 + 16 + (RequestType::SIZE * MAX_REQUESTS) + 256;
+   pub const SIZE: usize = 8 + 16 + (RequestType::SIZE * MAX_REQUESTS) ;
 }
 
 
