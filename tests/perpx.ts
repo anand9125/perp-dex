@@ -438,25 +438,68 @@ describe("perp-dex full flow", () => {
     expect(position.status).deep.equal({ pending: {} });
     expect(userColData.collateralAmount.toString()).to.equal("100000000"); // unchanged
   });
-  it("5) crank processes order queue → adds order to bid book", async () => {
+it("5) crank processes order queue → adds order to bid book", async () => {
   const COUNT_OFFSET = 12; // u16 head + u16 tail + u16 count + u16 capacity
-  await program.methods
-  .resetQueues()
-  .accounts({
-    market: marketPda,
-    bids: bidsPda,
-    asks: asksPda,
-  })
-  .rpc();
-   
-  await program.methods
-    .resetQueues()
-    .accounts({
-      requestQueue: requestQueuePda,
-      eventQueue: eventQueuePda,
-    })
-  .rpc();
 
+  // Helper: ALWAYS print on-chain logs (success OR failure)
+  async function sendAndLog(ix: () => any) {
+    try {
+      const sig = await ix().rpc();
+
+      console.log("\n===== TX SUCCESS =====");
+      console.log("Signature:", sig);
+
+      const tx = await provider.connection.getTransaction(sig, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+
+      if (tx?.meta?.logMessages) {
+        console.log("\n--- On-chain Logs ---");
+        console.log(tx.meta.logMessages.join("\n"));
+        console.log("--- End Logs ---\n");
+      } else {
+        console.log("No logs available for this transaction.");
+      }
+
+      return sig;
+    } catch (e: any) {
+      console.log("\n===== TX FAILURE =====");
+
+      if (e.logs) {
+        console.log("\n--- On-chain Logs (from Anchor error) ---");
+        console.log(e.logs.join("\n"));
+        console.log("--- End Logs ---\n");
+      } else {
+        console.log("No logs on error object.");
+      }
+
+      throw e;
+    }
+  }
+
+  // 1) Reset slabs (bids + asks)
+  await sendAndLog(() =>
+    program.methods
+      .resetSlab()
+      .accounts({
+        market: marketPda,
+        bids: bidsPda,
+        asks: asksPda,
+      })
+  );
+
+  // 2) Reset request + event queues
+  await sendAndLog(() =>
+    program.methods
+      .resetQueues()
+      .accounts({
+        requestQueue: requestQueuePda,
+        eventQueue: eventQueuePda,
+      })
+  );
+
+  // 3) Build order
   const order = {
     user: Array.from(authority.publicKey.toBytes()),
     orderId: new BN(0),
@@ -469,60 +512,60 @@ describe("perp-dex full flow", () => {
     market: marketPda,
   };
 
-  // Place an order again → ensure rq has exactly 1
-  await program.methods
-    .placeOrder(order)
-    .accounts({
-      user: authority.publicKey,
-      globalConfig: globalConfigPda,
-      market: marketPda,
-      userColletral: userCollateralPda,
-      positionPerMarket: positionPda,
-      requestQueue: requestQueuePda,
-      systemProgram: anchor.web3.SystemProgram.programId,
-      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-    })
-    .rpc();
+  // 4) Place an order → ensure rq has exactly 1
+  await sendAndLog(() =>
+    program.methods
+      .placeOrder(order)
+      .accounts({
+        user: authority.publicKey,
+        globalConfig: globalConfigPda,
+        market: marketPda,
+        userColletral: userCollateralPda,
+        positionPerMarket: positionPda,
+        requestQueue: requestQueuePda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+  );
 
   console.log("Order placed → request queued");
 
   // Confirm count is 1 BEFORE crank
-  let rqBeforeInfo = await provider.connection.getAccountInfo(requestQueuePda);
-  const rqBeforeCount = rqBeforeInfo.data.readUInt16LE(COUNT_OFFSET);
+  const rqBeforeInfo = await provider.connection.getAccountInfo(requestQueuePda);
+  const rqBeforeCount = rqBeforeInfo!.data.readUInt16LE(COUNT_OFFSET);
   console.log("Queue count before crank:", rqBeforeCount);
   expect(rqBeforeCount).to.equal(1);
 
-  // Execute cranker → process queue & move to bids slab
-  await program.methods
-    .processPlaceOrder()
-    .accounts({
-      authority: authority.publicKey,
-      market: marketPda,
-      bids: bidsPda,
-      asks: asksPda,
-      requestQueue: requestQueuePda,
-      eventQueue: eventQueuePda,
-      systemProgram: anchor.web3.SystemProgram.programId,
-      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-    })
-    .rpc();
+  // 5) Execute cranker → process queue & move to bids slab
+  await sendAndLog(() =>
+    program.methods
+      .processPlaceOrder()
+      .accounts({
+        authority: authority.publicKey,
+        market: marketPda,
+        bids: bidsPda,
+        asks: asksPda,
+        requestQueue: requestQueuePda,
+        eventQueue: eventQueuePda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+  );
 
   console.log("Crank executed");
 
   // Confirm queue was emptied
-  let rqAfterInfo = await provider.connection.getAccountInfo(requestQueuePda);
-  const rqAfterCount = rqAfterInfo.data.readUInt16LE(COUNT_OFFSET);
+  const rqAfterInfo = await provider.connection.getAccountInfo(requestQueuePda);
+  const rqAfterCount = rqAfterInfo!.data.readUInt16LE(COUNT_OFFSET);
   console.log("Queue count after crank:", rqAfterCount);
   expect(rqAfterCount).to.equal(0);
 
-  // Ensure bid tree has something now
+  // Ensure bid tree has something now (basic sanity check on account size)
   const bidInfo = await provider.connection.getAccountInfo(bidsPda);
-  expect(bidInfo.data.length).to.be.greaterThan(8);
+  expect(bidInfo!.data.length).to.be.greaterThan(8);
 
   console.log("Crank moved order to bid slab successfully");
 });
-
-
 
 
   

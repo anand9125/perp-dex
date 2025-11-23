@@ -62,6 +62,7 @@ impl<'info> ProcessOrder<'info> {
 
             let req = {
                 let mut rq = self.request_queue.load_mut()?;
+                msg!("RequestQueue: count={}, capacity={}, sequence={},tail={},head{}", rq.count, rq.capacity, rq.sequence,rq.tail,rq.head);
                 if rq.count == 0 {
                     None
                 } else {
@@ -69,8 +70,11 @@ impl<'info> ProcessOrder<'info> {
                 }
             };
 
+
             match req {
                 Some(RequestType::Place(order)) => {
+                    msg!("RequestQueue: enqueue order_id={}", order.order_id);
+
                     MatchingEngine::process_place_order(self, order)?;
                 }
                 Some(RequestType::Cancel(cancel)) => {
