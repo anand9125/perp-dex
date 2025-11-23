@@ -51,7 +51,19 @@ pub mod perp_dex {
     }
 
     pub fn process_place_order(
-        ctx:Context<ProcessOrder>
+        ctx:Context<ProcessOrder>,
+    )->Result<()>{
+        ctx.accounts.process()?;
+        Ok(())
+    }
+    pub fn reset_queues(
+        ctx:Context<ResetQueue>
+    )->Result<()>{
+        ctx.accounts.process()?;
+        Ok(())
+    }
+    pub fn reset_slab(
+        ctx:Context<ResetOrderBook>
     )->Result<()>{
         ctx.accounts.process()?;
         Ok(())
@@ -86,7 +98,5 @@ pub mod perp_dex {
         ctx.accounts.process(withdraw_amount)?;
         Ok(())
     }
-
-
 
 }

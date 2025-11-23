@@ -6,9 +6,10 @@ pub const EVENT_SLOT_LEN: usize = 128; // Must fit largest serialized MatchedOrd
 #[zero_copy]
 #[repr(C)]
 pub struct RequestSlot {
-    pub is_occupied: u8,
-    pub _pad: [u8; 7],
-    pub data: [u8; REQUEST_SLOT_LEN],
+    pub data: [u8; REQUEST_SLOT_LEN], // 128 bytes (8-byte aligned)
+    pub len: u16,                     // 2 bytes
+    pub is_occupied: u8,              // 1 byte
+    pub _pad: [u8; 5],                // 5 bytes to reach 136B (multiple of 8)
 }
 
 

@@ -15,7 +15,7 @@ pub struct InitializeMarket<'info> {
    #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + MarketState::INIT_SPACE,
+        space = 8 + MarketState::INIT_SPACE + 1024,
         seeds = [b"market", market_symbol.as_slice()],
         bump
     )]
@@ -24,20 +24,20 @@ pub struct InitializeMarket<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + Slab::compute_allocation_size(BID_SLAB_CAPACITY),
+        space = 8 + Slab::compute_allocation_size(BID_SLAB_CAPACITY) + 1024,
         seeds = [b"bids", market_symbol.as_slice()],
         bump
     )]
-    pub bids: Account<'info, BidAsk>,
+    pub bids: AccountLoader<'info, BidAsk>,
 
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + Slab::compute_allocation_size(ASK_SLAB_CAPACITY),
+        space = 8 + Slab::compute_allocation_size(ASK_SLAB_CAPACITY)+1024,
         seeds = [b"asks", market_symbol.as_slice()],
         bump
     )]
-    pub asks: Account<'info, BidAsk>,
+    pub asks: AccountLoader<'info, BidAsk>,
 
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -97,17 +97,20 @@ impl<'info> InitializeMarket<'info> {
 
         market.bump = bump.market;
 
-        // Initialize slabs
-           {
-            let mut bid_data = bid_account_info.try_borrow_mut_data()?;//we are accesing underlaying bytes of this account
-            let data_ref: &mut[u8] = &mut **bid_data;
-            Slab::initializ(data_ref,BID_SLAB_CAPACITY)?;
-        }
         {
-            let mut ask_data = ask_account_info.try_borrow_mut_data()?;
-            let data_ref: &mut[u8] = &mut **ask_data;
-            Slab::initializ(data_ref,ASK_SLAB_CAPACITY)?;
+            let bids_ai = self.bids.to_account_info();
+            let mut data = bids_ai.data.borrow_mut();  // RefMut lives for whole block
+            let slab_bytes: &mut [u8] = &mut data[..]; // now safe
+            Slab::initialize(slab_bytes, BID_SLAB_CAPACITY)?;
         }
+
+       {
+            let asks_ai = self.asks.to_account_info();
+            let mut data = asks_ai.data.borrow_mut();
+            let slab_bytes: &mut [u8] = &mut data[..];
+            Slab::initialize(slab_bytes, ASK_SLAB_CAPACITY)?;
+        }
+
 
         emit!(MarketInitialized {
             market: market.key(),

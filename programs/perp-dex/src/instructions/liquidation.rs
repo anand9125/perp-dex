@@ -31,14 +31,14 @@ pub struct Liquidation<'info> {
         seeds = [b"bids", market.symbol.as_bytes()],
         bump
     )]
-    pub bids: Account<'info, BidAsk>,
+    pub bids: AccountLoader<'info, BidAsk>,
 
     #[account(
         mut,
         seeds = [b"asks", market.symbol.as_bytes()],
         bump
     )]
-    pub ask: Account<'info, BidAsk>,
+    pub ask: AccountLoader<'info, BidAsk>,
 
     #[account(
         mut,

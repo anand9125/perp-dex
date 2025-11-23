@@ -37,7 +37,7 @@ pub struct DepositColletral <'info>{
     #[account(
         init_if_needed,
         payer = user,
-        space = UserCollateral::INIT_SPACE,
+        space = 8+UserCollateral::INIT_SPACE,
         seeds = [b"user_colletral", user.key().as_ref()],
         bump
     )]

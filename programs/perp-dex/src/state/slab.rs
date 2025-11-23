@@ -208,7 +208,7 @@ impl  Slab {
     pub const fn compute_allocation_size(capacity : usize)->usize {
         SLAB_HEADER_LEN + capacity*NODE_SIZE
     } 
-    pub fn initializ(bytes: &mut[u8],capacity:usize)->Result<&mut Self,PerpError>{
+    pub fn initialize(bytes: &mut[u8],capacity:usize)->Result<&mut Self,PerpError>{
         if bytes.len() < Self::compute_allocation_size(capacity){
             return  Err(PerpError::InsufficientSpace);
         }

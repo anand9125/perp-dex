@@ -28,9 +28,10 @@ impl RequestType {
     pub const SIZE: usize = 1 + 107; // 108 total
 }
 
+
+
 impl RequestQueue {
-    /// Initialize empty queue
-    pub fn init(&mut self) {
+     pub fn init(&mut self) {
         self.head = 0;
         self.tail = 0;
         self.count = 0;
@@ -39,7 +40,8 @@ impl RequestQueue {
 
         for slot in self.slots.iter_mut() {
             slot.is_occupied = 0;
-            slot._pad = [0; 7];
+            slot.len = 0;
+            slot._pad = [0; 5];
             slot.data = [0; REQUEST_SLOT_LEN];
         }
     }
@@ -54,11 +56,14 @@ impl RequestQueue {
             PerpError::SerializationFailed
         );
 
+        // write bytes
         slot.data[..encoded.len()].copy_from_slice(&encoded);
         if encoded.len() < REQUEST_SLOT_LEN {
             slot.data[encoded.len()..].fill(0);
         }
+
         slot.is_occupied = 1;
+        slot.len = encoded.len() as u16;
 
         Ok(())
     }
@@ -66,9 +71,10 @@ impl RequestQueue {
     fn decode_from_slot(slot: &RequestSlot) -> Result<RequestType> {
         require!(slot.is_occupied == 1, PerpError::QueueEmpty);
 
-        // Find last non-zero (optional; or attempt full buffer)
-        // For simplicity just try full buffer:
-        RequestType::try_from_slice(&slot.data)
+        let len = slot.len as usize;
+        require!(len > 0 && len <= REQUEST_SLOT_LEN, PerpError::DeserializationFailed);
+
+        RequestType::try_from_slice(&slot.data[..len])
             .map_err(|_| error!(PerpError::DeserializationFailed))
     }
 
@@ -98,8 +104,8 @@ impl RequestQueue {
 
         let req = Self::decode_from_slot(slot)?;
 
-        // mark empty
         slot.is_occupied = 0;
+        slot.len = 0;
 
         self.head = (self.head + 1) % self.capacity;
         self.count -= 1;
@@ -107,3 +113,4 @@ impl RequestQueue {
         Ok(req)
     }
 }
+

@@ -1,11 +1,11 @@
 use anchor_lang::{prelude::*};
 
-use crate::{ MatchedOrder, MatchingType, Order, OrderType, Side, Slab, event_queue};
+use crate::{ EventQueue, MatchedOrder, MatchingType, Order, OrderType, Side, Slab};
 
 pub fn match_against_book<'info>(
     book: &mut Slab,
     order: &Order,
-    evnet_queue: &mut AccountLoader<'info, event_queue::EventQueue>,
+    evnet_queue: &mut AccountLoader<'info, EventQueue>,
     match_type:MatchingType,
 ) -> Result<(u64,Vec<MatchedOrder>)> {
     let evnet_queue = &mut evnet_queue.load_mut()?;
