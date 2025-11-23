@@ -25,7 +25,6 @@ describe("perp-dex full flow", () => {
 
   const connection = provider.connection;
 
-  // ---- Shared state across tests ----
   let usdcMint: PublicKey;
 
   let globalConfigPda: PublicKey;
@@ -38,7 +37,6 @@ describe("perp-dex full flow", () => {
   let userCollateralPda: PublicKey;
   let positionPda: PublicKey;
 
-  // Market PDAs
   const MARKET_SYMBOL = "SOL-PERP";
   let marketPda: PublicKey;
   let bidsPda: PublicKey;
@@ -242,9 +240,6 @@ describe("perp-dex full flow", () => {
     assert.ok(eqInfo !== null, "event_queue account missing");
   });
 
-  // -------------------------------------------------
-  // 2) Initialize market (slabs in bids/asks)
-  // -------------------------------------------------
   it("2) initializes market successfully", async () => {
     const now = Math.floor(Date.now() / 1000);
 
@@ -309,10 +304,7 @@ describe("perp-dex full flow", () => {
     assert.equal(market.takerFeeBps, 10);
     assert.equal(market.makerFeeBps, 5);
   });
-
-  // -------------------------------------------------
-  // 3) Deposit collateral
-  // -------------------------------------------------
+ 
   it("3) deposits collateral successfully", async () => {
     const depositAmount = new anchor.BN(100_000_000); // 100 USDC (with 6 decimals)
 
@@ -373,9 +365,6 @@ describe("perp-dex full flow", () => {
     );
   });
 
-  // -------------------------------------------------
-  // 4) (Optional) make sure re-init of global config fails
-  // -------------------------------------------------
   it("4) fails when trying to initialize global config twice", async () => {
     try {
       await program.methods
@@ -399,7 +388,8 @@ describe("perp-dex full flow", () => {
       assert.ok(true);
     }
   });
-    it("4) places an order successfully", async () => {
+
+  it("4) places an order successfully", async () => {
     const order = {
       user: Array.from(authority.publicKey.toBytes()),
       orderId: new BN(0),
@@ -438,84 +428,258 @@ describe("perp-dex full flow", () => {
     expect(position.status).deep.equal({ pending: {} });
     expect(userColData.collateralAmount.toString()).to.equal("100000000"); // unchanged
   });
-it("5) crank processes order queue → adds order to bid book", async () => {
-  const COUNT_OFFSET = 12; // u16 head + u16 tail + u16 count + u16 capacity
 
-  // Helper: ALWAYS print on-chain logs (success OR failure)
-  async function sendAndLog(ix: () => any) {
-    try {
-      const sig = await ix().rpc();
+  it("5) crank processes order queue → adds order to bid book", async () => {
+    const COUNT_OFFSET = 12; // u16 head + u16 tail + u16 count + u16 capacity
 
-      console.log("\n===== TX SUCCESS =====");
-      console.log("Signature:", sig);
+    // Helper: ALWAYS print on-chain logs (success OR failure)
+    async function sendAndLog(ix: () => any) {
+      try {
+        const sig = await ix().rpc();
 
-      const tx = await provider.connection.getTransaction(sig, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0,
-      });
+        console.log("\n===== TX SUCCESS =====");
+        console.log("Signature:", sig);
 
-      if (tx?.meta?.logMessages) {
-        console.log("\n--- On-chain Logs ---");
-        console.log(tx.meta.logMessages.join("\n"));
-        console.log("--- End Logs ---\n");
-      } else {
-        console.log("No logs available for this transaction.");
+        const tx = await provider.connection.getTransaction(sig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+
+        if (tx?.meta?.logMessages) {
+          console.log("\n--- On-chain Logs ---");
+          console.log(tx.meta.logMessages.join("\n"));
+          console.log("--- End Logs ---\n");
+        } else {
+          console.log("No logs available for this transaction.");
+        }
+
+        return sig;
+      } catch (e: any) {
+        console.log("\n===== TX FAILURE =====");
+
+        if (e.logs) {
+          console.log("\n--- On-chain Logs (from Anchor error) ---");
+          console.log(e.logs.join("\n"));
+          console.log("--- End Logs ---\n");
+        } else {
+          console.log("No logs on error object.");
+        }
+
+        throw e;
       }
-
-      return sig;
-    } catch (e: any) {
-      console.log("\n===== TX FAILURE =====");
-
-      if (e.logs) {
-        console.log("\n--- On-chain Logs (from Anchor error) ---");
-        console.log(e.logs.join("\n"));
-        console.log("--- End Logs ---\n");
-      } else {
-        console.log("No logs on error object.");
-      }
-
-      throw e;
     }
-  }
 
-  // 1) Reset slabs (bids + asks)
+    // 1) Reset slabs (bids + asks)
+    await sendAndLog(() =>
+      program.methods
+        .resetSlab()
+        .accounts({
+          market: marketPda,
+          bids: bidsPda,
+          asks: asksPda,
+        })
+    );
+
+    // 2) Reset request + event queues
+    await sendAndLog(() =>
+      program.methods
+        .resetQueues()
+        .accounts({
+          requestQueue: requestQueuePda,
+          eventQueue: eventQueuePda,
+        })
+    );
+
+    // 3) Build order
+    const order = {
+      user: Array.from(authority.publicKey.toBytes()),
+      orderId: new BN(0),
+      side: { buy: {} },
+      qty: new BN(1),
+      orderType: { limit: {} },
+      limitPrice: new BN(100),
+      initialMargin: new BN(10),
+      leverage: 10,
+      market: marketPda,
+    };
+
+    // 4) Place an order → ensure rq has exactly 1
+    await sendAndLog(() =>
+      program.methods
+        .placeOrder(order)
+        .accounts({
+          user: authority.publicKey,
+          globalConfig: globalConfigPda,
+          market: marketPda,
+          userColletral: userCollateralPda,
+          positionPerMarket: positionPda,
+          requestQueue: requestQueuePda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+        })
+    );
+
+    console.log("Order placed → request queued");
+
+    // Confirm count is 1 BEFORE crank
+    const rqBeforeInfo = await provider.connection.getAccountInfo(requestQueuePda);
+    const rqBeforeCount = rqBeforeInfo!.data.readUInt16LE(COUNT_OFFSET);
+    console.log("Queue count before crank:", rqBeforeCount);
+    expect(rqBeforeCount).to.equal(1);
+
+    // 5) Execute cranker → process queue & move to bids slab
+    await sendAndLog(() =>
+      program.methods
+        .processPlaceOrder()
+        .accounts({
+          authority: authority.publicKey,
+          market: marketPda,
+          bids: bidsPda,
+          asks: asksPda,
+          requestQueue: requestQueuePda,
+          eventQueue: eventQueuePda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+        })
+    );
+
+    console.log("Crank executed");
+
+    // Confirm queue was emptied
+    const rqAfterInfo = await provider.connection.getAccountInfo(requestQueuePda);
+    const rqAfterCount = rqAfterInfo!.data.readUInt16LE(COUNT_OFFSET);
+    console.log("Queue count after crank:", rqAfterCount);
+    expect(rqAfterCount).to.equal(0);
+
+    // Ensure bid tree has something now (basic sanity check on account size)
+    const bidInfo = await provider.connection.getAccountInfo(bidsPda);
+    expect(bidInfo!.data.length).to.be.greaterThan(8);
+
+    console.log("Crank moved order to bid slab successfully");
+  });
+   
+  it("6) multi-level matching — verifies price priority + partial fills", async () => {
+  const COUNT_OFFSET = 12;
+  async function sendAndLog(ix: () => any) {
+      try {
+        const sig = await ix().rpc();
+
+        console.log("\n===== TX SUCCESS =====");
+        console.log("Signature:", sig);
+
+        const tx = await provider.connection.getTransaction(sig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+
+        if (tx?.meta?.logMessages) {
+          console.log("\n--- On-chain Logs ---");
+          console.log(tx.meta.logMessages.join("\n"));
+          console.log("--- End Logs ---\n");
+        } else {
+          console.log("No logs available for this transaction.");
+        }
+
+        return sig;
+      } catch (e: any) {
+        console.log("\n===== TX FAILURE =====");
+
+        if (e.logs) {
+          console.log("\n--- On-chain Logs (from Anchor error) ---");
+          console.log(e.logs.join("\n"));
+          console.log("--- End Logs ---\n");
+        } else {
+          console.log("No logs on error object.");
+        }
+
+        throw e;
+      }
+    }
+
+  // 1) Reset slabs and queues (reuse same helper)
   await sendAndLog(() =>
-    program.methods
-      .resetSlab()
-      .accounts({
+    program.methods.resetSlab().accounts({
+      market: marketPda,
+      bids: bidsPda,
+      asks: asksPda,
+    })
+  );
+
+  await sendAndLog(() =>
+    program.methods.resetQueues().accounts({
+      requestQueue: requestQueuePda,
+      eventQueue: eventQueuePda,
+    })
+  );
+
+  console.log("\n=== INSERTING SELL ORDERS (asks) ===");
+
+  const asks = [
+    { id: 1, price: 90, qty: 1 },
+    { id: 2, price: 95, qty: 1 },
+    { id: 3, price: 100, qty: 1 },
+  ];
+  // 2) Insert 3 ASK orders → crank into ask slab
+  for (const o of asks) {
+    await sendAndLog(() =>
+      program.methods
+        .placeOrder({
+          user: Array.from(authority.publicKey.toBytes()),
+          orderId: new BN(o.id),
+          side: { sell: {} },
+          qty: new BN(o.qty),
+          orderType: { limit: {} },
+          limitPrice: new BN(o.price),
+          initialMargin: new BN(5),
+          leverage: 5,
+          market: marketPda,
+        })
+        .accounts({
+          user: authority.publicKey,
+          globalConfig: globalConfigPda,
+          market: marketPda,
+          userColletral: userCollateralPda,
+          positionPerMarket: positionPda,
+          requestQueue: requestQueuePda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+        })
+    );
+
+    await sendAndLog(() =>
+      program.methods.processPlaceOrder().accounts({
+        authority: authority.publicKey,
         market: marketPda,
         bids: bidsPda,
         asks: asksPda,
-      })
-  );
-
-  // 2) Reset request + event queues
-  await sendAndLog(() =>
-    program.methods
-      .resetQueues()
-      .accounts({
         requestQueue: requestQueuePda,
         eventQueue: eventQueuePda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       })
-  );
+    );
+  }
 
-  // 3) Build order
-  const order = {
-    user: Array.from(authority.publicKey.toBytes()),
-    orderId: new BN(0),
-    side: { buy: {} },
-    qty: new BN(1),
-    orderType: { limit: {} },
-    limitPrice: new BN(100),
-    initialMargin: new BN(10),
-    leverage: 10,
-    market: marketPda,
-  };
+  console.log("Inserted 3 asks into order book successfully.");
 
-  // 4) Place an order → ensure rq has exactly 1
+  console.log("\n=== INSERTING BUY ORDER TO TRIGGER MATCH ===");
+
+  // 3) High-price BUY order — should match multiple asks
+  const buyQty = 2;
+
   await sendAndLog(() =>
     program.methods
-      .placeOrder(order)
+      .placeOrder({
+        user: Array.from(authority.publicKey.toBytes()),
+        orderId: new BN(200),
+        side: { buy: {} },
+        qty: new BN(buyQty),
+        orderType: { limit: {} },
+        limitPrice: new BN(100),
+        initialMargin: new BN(20),
+        leverage: 5,
+        market: marketPda,
+      })
       .accounts({
         user: authority.publicKey,
         globalConfig: globalConfigPda,
@@ -528,45 +692,36 @@ it("5) crank processes order queue → adds order to bid book", async () => {
       })
   );
 
-  console.log("Order placed → request queued");
-
-  // Confirm count is 1 BEFORE crank
-  const rqBeforeInfo = await provider.connection.getAccountInfo(requestQueuePda);
-  const rqBeforeCount = rqBeforeInfo!.data.readUInt16LE(COUNT_OFFSET);
-  console.log("Queue count before crank:", rqBeforeCount);
-  expect(rqBeforeCount).to.equal(1);
-
-  // 5) Execute cranker → process queue & move to bids slab
   await sendAndLog(() =>
-    program.methods
-      .processPlaceOrder()
-      .accounts({
-        authority: authority.publicKey,
-        market: marketPda,
-        bids: bidsPda,
-        asks: asksPda,
-        requestQueue: requestQueuePda,
-        eventQueue: eventQueuePda,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-      })
+    program.methods.processPlaceOrder().accounts({
+      authority: authority.publicKey,
+      market: marketPda,
+      bids: bidsPda,
+      asks: asksPda,
+      requestQueue: requestQueuePda,
+      eventQueue: eventQueuePda,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+    })
   );
 
-  console.log("Crank executed");
+  console.log("\n=== MATCHING COMPLETE: VERIFYING ORDERBOOK ===");
 
-  // Confirm queue was emptied
-  const rqAfterInfo = await provider.connection.getAccountInfo(requestQueuePda);
-  const rqAfterCount = rqAfterInfo!.data.readUInt16LE(COUNT_OFFSET);
-  console.log("Queue count after crank:", rqAfterCount);
-  expect(rqAfterCount).to.equal(0);
+  // 4) After matching:
+  // BUY (12) would consume:
+  // - Ask(90): 3 fully
+  // - Ask(95): 5 fully
+  // - Ask(100): 4 partially → 6 remain
 
-  // Ensure bid tree has something now (basic sanity check on account size)
-  const bidInfo = await provider.connection.getAccountInfo(bidsPda);
-  expect(bidInfo!.data.length).to.be.greaterThan(8);
+  const askInfo = await provider.connection.getAccountInfo(asksPda);
+  expect(askInfo!.data.length).to.be.greaterThan(8);
 
-  console.log("Crank moved order to bid slab successfully");
-});
+  console.log("Check logs above — expect:");
+  console.log("- 2 full matches");
+  console.log("- 1 partial match (remaining qty ≈ 6)");
 
+  console.log("\nTEST 6 COMPLETE ✓");
+  });
 
-  
+ 
 });

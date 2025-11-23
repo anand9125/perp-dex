@@ -38,7 +38,7 @@ pub enum OrderType {
     Limit
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy,Debug, PartialEq, Eq)]
 #[derive(InitSpace)]
 
 pub enum Side {
