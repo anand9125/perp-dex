@@ -1,16 +1,19 @@
 use anchor_lang::prelude::*;
 
-use crate::RequestQueue;
+use crate::{EventQueue, RequestQueue};
 
 #[derive(Accounts)]
 pub struct ResetQueue<'info> {
     #[account(mut, seeds = [b"request_queue"], bump)]
     pub request_queue: AccountLoader<'info, RequestQueue>,
+    #[account(mut, seeds = [b"event_queue"], bump)]
+    pub event_queue: AccountLoader<'info, EventQueue>,
 }
 
 impl<'info> ResetQueue<'info> {
     pub fn process(&mut self) -> Result<()> {
         let mut rq = self.request_queue.load_mut()?;
+        let mut eq = self.event_queue.load_mut()?;
         
         // Reset struct fields correctly
         rq.head = 0;
@@ -26,6 +29,20 @@ impl<'info> ResetQueue<'info> {
             slot._pad = [0; 5];
             slot.data = [0; crate::slot::REQUEST_SLOT_LEN];
         }
+
+        eq.head = 0;
+        eq.tail = 0;
+        eq.count = 0;
+        eq.capacity = crate::MAX_REQUESTS as u16;
+        eq.sequence = 0;
+
+        for slot in eq.slots.iter_mut() {
+            slot.is_occupied = 0;
+            slot.len = 0;
+            slot._pad = [0; 5];
+            slot.data = [0; crate::slot::EVENT_SLOT_LEN];
+        }
+
 
         Ok(())
     }

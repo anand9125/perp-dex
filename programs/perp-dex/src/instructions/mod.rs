@@ -25,7 +25,7 @@ pub mod withdraw;
 pub use withdraw::*;
 
 pub mod debug;
-pub use  debug::*;
+pub use debug::*;
 
 
 pub mod reset_queues;
@@ -33,3 +33,7 @@ pub use reset_queues::*;
 
 pub mod reset_slab;
 pub use reset_slab::*;
+
+
+pub mod setmark_price;
+pub use setmark_price::*;

@@ -389,7 +389,7 @@ describe("perp-dex full flow", () => {
     }
   });
 
-  it("4) places an order successfully", async () => {
+  it("5) places an order successfully", async () => {
     const order = {
       user: Array.from(authority.publicKey.toBytes()),
       orderId: new BN(0),
@@ -429,7 +429,7 @@ describe("perp-dex full flow", () => {
     expect(userColData.collateralAmount.toString()).to.equal("100000000"); // unchanged
   });
 
-  it("5) crank processes order queue → adds order to bid book", async () => {
+  it("6) crank processes order queue → adds order to bid book", async () => {
     const COUNT_OFFSET = 12; // u16 head + u16 tail + u16 count + u16 capacity
 
     // Helper: ALWAYS print on-chain logs (success OR failure)
@@ -558,7 +558,7 @@ describe("perp-dex full flow", () => {
     console.log("Crank moved order to bid slab successfully");
   });
    
-  it("6) multi-level matching — verifies price priority + partial fills", async () => {
+  it("7) multi-level matching — verifies price priority + partial fills", async () => {
   const COUNT_OFFSET = 12;
   async function sendAndLog(ix: () => any) {
       try {
@@ -722,6 +722,459 @@ describe("perp-dex full flow", () => {
 
   console.log("\nTEST 6 COMPLETE ✓");
   });
+
+  it("8) processes EventQueue and updates user Position", async () => {
+    console.log("\n=== START EVENT QUEUE → POSITION TEST ===");
+
+    const USER_KEY = authority.publicKey;
+
+    const DISCRIMINATOR_LEN = 8;
+    const COUNT_OFFSET_IN_HEADER = 4; // inside Rust struct
+    const EVENT_COUNT_OFFSET = DISCRIMINATOR_LEN + COUNT_OFFSET_IN_HEADER; // 12
+
+    async function getEventCount() {
+      const eqInfo = await provider.connection.getAccountInfo(eventQueuePda);
+      return eqInfo!.data.readUInt16LE(EVENT_COUNT_OFFSET);
+    }
+
+    async function sendAndLog(ix: () => any) {
+      try {
+        const sig = await ix().rpc();
+        console.log("\n===== TX SUCCESS =====");
+        console.log("Signature:", sig);
+
+        try {
+    const tx = await provider.connection.getTransaction(sig, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+
+    if (tx?.meta?.logMessages) {
+      console.log("\n--- On-chain Logs ---");
+      console.log(tx.meta.logMessages.join("\n"));
+      console.log("--- End Logs ---\n");
+    }
+  } catch (_) {
+    console.log("(Logs not available yet — continuing)");
+  }
+
+      } catch (e: any) {
+        console.log("\n===== TX FAILURE =====");
+        if (e.logs) {
+          console.log(e.logs.join("\n"));
+        }
+        throw e;
+      }
+    }
+
+    // Reset all
+    await sendAndLog(() =>
+      program.methods.resetSlab().accounts({
+        market: marketPda,
+        bids: bidsPda,
+        asks: asksPda,
+      })
+    );
+
+    await sendAndLog(() =>
+      program.methods.resetQueues().accounts({
+        requestQueue: requestQueuePda,
+        eventQueue: eventQueuePda,
+      })
+    );
+
+    // Two SELL orders to generate event fills
+    const sellOrders = [
+      { id: 11, price: 90, qty: 3 },
+      { id: 12, price: 95, qty: 5 },
+    ];
+
+    console.log("\n--- INSERTING SELLs ---");
+    for (const o of sellOrders) {
+      await sendAndLog(() =>
+        program.methods.placeOrder({
+          user: Array.from(USER_KEY.toBytes()),
+          orderId: new BN(o.id),
+          side: { sell: {} },
+          qty: new BN(o.qty),
+          orderType: { limit: {} },
+          limitPrice: new BN(o.price),
+          initialMargin: new BN(5),
+          leverage: 5,
+          market: marketPda,
+        }).accounts({
+          user: USER_KEY,
+          globalConfig: globalConfigPda,
+          market: marketPda,
+          userColletral: userCollateralPda,
+          positionPerMarket: positionPda,
+          requestQueue: requestQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+      );
+
+      await sendAndLog(() =>
+        program.methods.processPlaceOrder().accounts({
+          authority: USER_KEY,
+          market: marketPda,
+          bids: bidsPda,
+          asks: asksPda,
+          requestQueue: requestQueuePda,
+          eventQueue: eventQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+      );
+    }
+
+    console.log("\n--- INSERT BUY (triggers matches & fills → eventQueue) ---");
+
+    await sendAndLog(() =>
+      program.methods.placeOrder({
+        user: Array.from(USER_KEY.toBytes()),
+        orderId: new BN(2001),
+        side: { buy: {} },
+        qty: new BN(10),
+        orderType: { limit: {} },
+        limitPrice: new BN(100),
+        initialMargin: new BN(20),
+        leverage: 5,
+        market: marketPda,
+      }).accounts({
+        user: USER_KEY,
+        globalConfig: globalConfigPda,
+        market: marketPda,
+        userColletral: userCollateralPda,
+        positionPerMarket: positionPda,
+        requestQueue: requestQueuePda,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+    );
+
+    await sendAndLog(() =>
+      program.methods.processPlaceOrder().accounts({
+        authority: USER_KEY,
+        market: marketPda,
+        bids: bidsPda,
+        asks: asksPda,
+        requestQueue: requestQueuePda,
+        eventQueue: eventQueuePda,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+    );
+
+    const countBefore = await getEventCount();
+    console.log("EventQueue count BEFORE:", countBefore);
+    expect(countBefore).to.be.greaterThan(0);
+
+    console.log("\n--- PROCESS EVENT QUEUE → OPEN POSITION ---");
+
+    await sendAndLog(() =>
+      program.methods
+        .positionManager(USER_KEY) // IMPORTANT: pass instruction arg!
+        .accounts({
+          market: marketPda,
+          userPosition: positionPda,
+          eventQueue: eventQueuePda,
+          userColletral: userCollateralPda,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+    );
+
+    const countAfter = await getEventCount();
+    console.log("EventQueue count AFTER:", countAfter);
+    expect(countAfter).to.equal(0);
+
+    const positionAcc = await program.account.position.fetch(positionPda);
+    console.log("Updated position:", positionAcc);
+
+    expect(positionAcc.updatedAt.toNumber()).to.be.greaterThan(0);
+
+    expect(positionAcc.basePosition.toNumber()).to.be.a("number");
+
+    expect(positionAcc.realizedPnl.toNumber()).to.be.a("number");
+    expect(positionAcc.lastCumFunding.toNumber()).to.be.a("number");
+
+      console.log("\n=== EVENT → POSITION PROCESS SUCCESS ===");
+  });
+  // it("9) liquidation flow — closes unhealthy position & applies penalty", async () => {
+  //   console.log("\n=== START LIQUIDATION TEST ===");
+
+  //   const USER = authority;
+  //   const USER_KEY = authority.publicKey;
+
+
+  //   // ---------- Small helpers for this test ----------
+
+  //   async function getUserPosition() {
+  //     return await program.account.position.fetch(positionPda);
+  //   }
+
+  //   async function getCollateral() {
+  //     return await program.account.userCollateral.fetch(userCollateralPda);
+  //   }
+
+  //   // Deposit collateral (in USDC)
+  //   async function deposit(amount: number) {
+  //     const txSig = await program.methods
+  //     .depositColletral(new BN(amount))
+  //     .accounts({
+  //       user: authority.publicKey,
+  //       usdcMint: usdcMint,
+  //       userWalletAccount: userUsdcAta,
+  //       globalConfig: globalConfigPda,
+  //       vaultQuote: vaultQuotePda,
+  //       userColletral: userCollateralPda,
+  //       systemProgram: SystemProgram.programId,
+  //       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     })
+  //     .rpc();
+
+  //       console.log("Deposited collateral to user collateral account");
+  //   }
+
+  //   // Place a SELL limit order and crank → goes into asks slab
+  //   async function placeAndCrankSell(orderId: number, price: number, qty: number) {
+  //     await program.methods
+  //       .placeOrder({
+  //         user: Array.from(USER_KEY.toBytes()),
+  //         orderId: new BN(orderId),
+  //         side: { sell: {} },
+  //         qty: new BN(qty),
+  //         orderType: { limit: {} },
+  //         limitPrice: new BN(price),
+  //         initialMargin: new BN(100), // arbitrary, not used directly in match
+  //         leverage: 5,
+  //         market: marketPda,
+  //       })
+  //       .accounts({
+  //         user: USER_KEY,
+  //         globalConfig: globalConfigPda,
+  //         market: marketPda,
+  //         userColletral: userCollateralPda,
+  //         positionPerMarket: positionPda,
+  //         requestQueue: requestQueuePda,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       .rpc();
+
+  //     await program.methods
+  //       .processPlaceOrder()
+  //       .accounts({
+  //         authority: USER_KEY,
+  //         market: marketPda,
+  //         bids: bidsPda,
+  //         asks: asksPda,
+  //         requestQueue: requestQueuePda,
+  //         eventQueue: eventQueuePda,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       .rpc();
+  //   }
+
+  //   // Place a BUY limit order and crank → this will match against asks + push events
+  //   async function placeAndCrankBuy(orderId: number, price: number, qty: number) {
+  //     await program.methods
+  //       .placeOrder({
+  //         user: Array.from(USER_KEY.toBytes()),
+  //         orderId: new BN(orderId),
+  //         side: { buy: {} },
+  //         qty: new BN(qty),
+  //         orderType: { limit: {} },
+  //         limitPrice: new BN(price),
+  //         initialMargin: new BN(200),
+  //         leverage: 5,
+  //         market: marketPda,
+  //       })
+  //       .accounts({
+  //         user: USER_KEY,
+  //         globalConfig: globalConfigPda,
+  //         market: marketPda,
+  //         userColletral: userCollateralPda,
+  //         positionPerMarket: positionPda,
+  //         requestQueue: requestQueuePda,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       .rpc();
+
+  //     await program.methods
+  //       .processPlaceOrder()
+  //       .accounts({
+  //         authority: USER_KEY,
+  //         market: marketPda,
+  //         bids: bidsPda,
+  //         asks: asksPda,
+  //         requestQueue: requestQueuePda,
+  //         eventQueue: eventQueuePda,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       .rpc();
+  //   }
+
+  //   // Cranker that reads EventQueue and applies fills to Position
+  //   async function processEventQueue() {
+  //     await program.methods
+  //       .positionManager() // this is the #[instruction(user_key)] param
+  //       .accounts({
+  //         market: marketPda,
+  //         userPosition: positionPda,
+  //         eventQueue: eventQueuePda,
+  //         userColletral: userCollateralPda,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       .rpc();
+  //   }
+
+  //   // Pure off-chain health calc (mirrors RiskEngine::account_health_single)
+  //   function notional(qty: number, price: number) {
+  //     return Math.abs(qty) * price;
+  //   }
+
+  //   function unrealizedPnL(qty: number, entry: number, mark: number) {
+  //     return qty * (mark - entry); // long: qty>0 → (mark-entry); short: qty<0 → (mark-entry) negative flips sign
+  //   }
+
+  //   function maintenanceMargin(qty: number, mark: number, mmrBps: number) {
+  //     const not = notional(qty, mark);
+  //     return Math.floor((not * mmrBps) / 10_000);
+  //   }
+
+  //   function accountHealth(
+  //     collateral: number,
+  //     qty: number,
+  //     entry: number,
+  //     mark: number,
+  //     mmrBps: number
+  //   ) {
+  //     const uPnl = unrealizedPnL(qty, entry, mark);
+  //     const mm = maintenanceMargin(qty, mark, mmrBps);
+  //     return collateral + uPnl - mm;
+  //   }
+
+  //   // ---------- 1) Reset orderbook + queues ----------
+
+  //   await program.methods
+  //     .resetSlab()
+  //     .accounts({
+  //       market: marketPda,
+  //       bids: bidsPda,
+  //       asks: asksPda,
+  //     })
+  //     .rpc();
+
+  //   await program.methods
+  //     .resetQueues()
+  //     .accounts({
+  //       requestQueue: requestQueuePda,
+  //       eventQueue: eventQueuePda,
+  //     })
+  //     .rpc();
+
+  //   // ---------- 2) Deposit collateral ----------
+
+  //   await deposit(1000); // 1000 USDC
+
+  //   // ---------- 3) Open a LONG position via matching ----------
+
+  //   // First insert a SELL on the book: 10 @ 100
+  //   await placeAndCrankSell(5001, 100, 10);
+
+  //   // Then a BUY 10 @ 100 → this should fully match that ask
+  //   await placeAndCrankBuy(7001, 100, 10);
+
+  //   // Now process EventQueue so Position account reflects the fills
+  //   await processEventQueue();
+
+  //   const posBefore = await getUserPosition();
+  //   console.log("Position BEFORE liquidation:", posBefore);
+  //   expect(posBefore.basePosition.toNumber()).to.equal(10); // long 10
+  //   const entryPrice = posBefore.entryPrice.toNumber();
+  //   expect(entryPrice).to.equal(100);
+
+  //   // ---------- 4) Off-chain health calculation at bad mark price ----------
+
+  //   const markPrice = 60; // price crash
+
+  //   const collBefore = await getCollateral();
+  //   const marketAcc = await program.account.marketState.fetch(marketPda);
+  //   const mmrBps = marketAcc.mmBps; // maintenance margin ratio in bps
+
+  //   const health = accountHealth(
+  //     Number(collBefore.collateralAmount),
+  //     posBefore.basePosition.toNumber(),
+  //     posBefore.entryPrice.toNumber(),
+  //     markPrice,
+  //     mmrBps
+  //   );
+
+  //   console.log("Off-chain health =", health);
+  //   expect(health).to.be.below(0); // user is liquidatable off-chain
+
+  //   // Also set mark price on-chain so RiskEngine sees same mark
+  //   await program.methods
+  //     .setMarkPrice(new BN(markPrice))
+  //     .accounts({ market: marketPda })
+  //     .rpc();
+
+  //   // ---------- 5) Call liquidation instruction ----------
+
+  //   await program.methods
+  //     .liquidate()
+  //     .accounts({
+  //       liquidator: USER_KEY,                       // for simplicity use same signer
+  //       liquidatorTokenAccount: userUsdcAta,        // must be ATA of liquidator
+  //       market: marketPda,
+  //       bids: bidsPda,
+  //       ask: asksPda,
+  //       eventQueue: eventQueuePda,
+  //       liquidateePosition: positionPda,
+  //       liquidateeUserCollateral: userCollateralPda,
+  //       liquidateeTokenAccount: userUsdcAta,
+  //       globalConfig: globalConfigPda,
+  //       usdcMint,
+  //       insuranceFund: insuranceFundPda,
+  //       vaultQuote: vaultQuotePda,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     })
+  //     .rpc();
+
+  //   // ---------- 6) Assertions after liquidation ----------
+
+  //   const posAfter = await getUserPosition();
+  //   const collAfter = await getCollateral();
+
+  //   console.log("Position AFTER liquidation:", posAfter);
+  //   console.log("Collateral AFTER liquidation:", collAfter.collateralAmount.toString());
+
+  //   // Position should be fully closed
+  //   expect(posAfter.basePosition.toNumber()).to.equal(0);
+  //   expect(posAfter.entryPrice.toNumber()).to.equal(0);
+
+  //   // Collateral must not be negative; liquidation + insurance fund logic should have handled it
+  //   expect(collAfter.collateralAmount.toNumber()).to.be.at.least(0);
+
+  //   console.log("=== LIQUIDATION SUCCESS ===");
+  // });
+
+
+
+
+
+
 
  
 });

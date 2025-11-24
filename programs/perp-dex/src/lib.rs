@@ -49,7 +49,14 @@ pub mod perp_dex {
         ctx.accounts.process(order)?;
         Ok(())
     }
-
+     
+     pub fn set_mark_price(
+        ctx:Context<SetMarkPrice>,
+        mark_price:u64
+    )->Result<()>{
+        ctx.accounts.process(mark_price)?;
+        Ok(())
+    }
     pub fn process_place_order(
         ctx:Context<ProcessOrder>,
     )->Result<()>{
@@ -70,9 +77,10 @@ pub mod perp_dex {
     }
     
     pub fn position_manager(
-        ctx:Context<PositionIns>
+        ctx:Context<PositionIns>,
+        user_key:Pubkey
     )->Result<()>{
-        ctx.accounts.process()?;
+        ctx.accounts.process(user_key)?;
         Ok(())
     }
 

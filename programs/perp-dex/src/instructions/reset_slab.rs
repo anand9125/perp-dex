@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::{ASK_SLAB_CAPACITY, BID_SLAB_CAPACITY, BidAsk, MarketState, NODE_SIZE, SLAB_HEADER_LEN, Slab};
+use crate::{BidAsk, MarketState, NODE_SIZE, SLAB_HEADER_LEN, Slab};
 
  pub const DISCRIMINATOR_LEN: usize = 8;
 
@@ -20,30 +20,16 @@ impl<'info> ResetOrderBook<'info> {
 
         {
             let mut bid_data = bid_account_info.try_borrow_mut_data()?;
-            msg!("RESET: Bid account total length: {}", bid_data.len());
-
             let slab_data: &mut [u8] = &mut bid_data[DISCRIMINATOR_LEN..];
-            msg!("RESET: Bid slab raw data length: {}", slab_data.len());
-
             let capacity = (slab_data.len() - SLAB_HEADER_LEN) / NODE_SIZE;
-            msg!("RESET: BIDS dynamic capacity={}", capacity);
-
             Slab::initialize(slab_data, capacity)?;
-            msg!("RESET: Bid slab initialized successfully");
         }
 
         {
             let mut ask_data = ask_account_info.try_borrow_mut_data()?;
-            msg!("RESET: Ask account total length: {}", ask_data.len());
-
             let slab_data: &mut [u8] = &mut ask_data[DISCRIMINATOR_LEN..];
-            msg!("RESET: Ask slab raw data length: {}", slab_data.len());
-
             let capacity = (slab_data.len() - SLAB_HEADER_LEN) / NODE_SIZE;
-            msg!("RESET: ASKS dynamic capacity={}", capacity);
-
             Slab::initialize(slab_data, capacity)?;
-            msg!("RESET: Ask slab initialized successfully");
         }
 
         msg!("RESET: Both slabs initialized successfully");

@@ -30,6 +30,7 @@ impl CancelOrder {
     pub const SIZE: usize = 16 + 32 + 1; // = 49
 }
 
+
 #[account]
 pub struct MatchedOrder {
     pub is_maker: bool,

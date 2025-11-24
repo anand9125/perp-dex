@@ -77,9 +77,10 @@ impl<'info> ProcessOrder<'info> {
 
                     MatchingEngine::process_place_order(self, order)?;
                 }
-                Some(RequestType::Cancel(cancel)) => {
-                    MatchingEngine::process_cancel_order(self, cancel)?;
+                Some(RequestType::Cancel(cancel)) =>{
+                    msg!("RequestQueue: cancel order_id={}", cancel.order_id);
                 }
+                
                 None => break, 
             }
 

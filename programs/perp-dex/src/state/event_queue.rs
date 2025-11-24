@@ -1,6 +1,10 @@
 use anchor_lang::prelude::*;
-
-use crate::{MAX_REQUESTS, MatchedOrder,PerpError, slot::{EVENT_SLOT_LEN, EventSlot}};
+use crate::{
+    MAX_REQUESTS,
+    MatchedOrder,
+    PerpError,
+    slot::{EVENT_SLOT_LEN, EventSlot},
+};
 
 #[account(zero_copy)]
 #[repr(C)]
@@ -27,12 +31,14 @@ impl EventQueue {
 
         for slot in self.slots.iter_mut() {
             slot.is_occupied = 0;
-            slot._pad = [0; 7];
+            slot.len = 0;
+            slot._pad = [0; 5];
             slot.data = [0; EVENT_SLOT_LEN];
         }
     }
     fn encode_into_slot(slot: &mut EventSlot, ev: &MatchedOrder) -> Result<()> {
-        let encoded = ev.try_to_vec()
+        let encoded = ev
+            .try_to_vec()
             .map_err(|_| error!(PerpError::SerializationFailed))?;
 
         require!(encoded.len() <= EVENT_SLOT_LEN, PerpError::SerializationFailed);
@@ -41,23 +47,33 @@ impl EventQueue {
         if encoded.len() < EVENT_SLOT_LEN {
             slot.data[encoded.len()..].fill(0);
         }
-        slot.is_occupied = 1;
+
+        slot.is_occupied = 0;
+        slot.len = encoded.len() as u16;
         Ok(())
     }
 
     fn decode_from_slot(slot: &EventSlot) -> Result<MatchedOrder> {
         require!(slot.is_occupied == 1, PerpError::QueueEmpty);
 
-        MatchedOrder::try_from_slice(&slot.data)
+        let len = slot.len as usize;
+        require!(len > 0 && len <= EVENT_SLOT_LEN, PerpError::DeserializationFailed);
+
+        MatchedOrder::try_from_slice(&slot.data[..len])
             .map_err(|_| error!(PerpError::DeserializationFailed))
     }
-     pub fn push(&mut self, event: &MatchedOrder) -> Result<()> {
-        require!((self.count as usize) < MAX_REQUESTS, PerpError::QueueFull);
+
+
+    pub fn push(&mut self, ev: &MatchedOrder) -> Result<()> {
+        require!(
+            (self.count as usize) < MAX_REQUESTS,
+            PerpError::QueueFull
+        );
 
         let idx = self.tail as usize;
         let slot = &mut self.slots[idx];
 
-        Self::encode_into_slot(slot, event)?;
+        Self::encode_into_slot(slot, ev)?;
 
         self.tail = (self.tail + 1) % self.capacity;
         self.count += 1;
@@ -72,12 +88,14 @@ impl EventQueue {
         let idx = self.head as usize;
         let slot = &mut self.slots[idx];
 
-        let res = Self::decode_from_slot(slot)?;
+        let ev = Self::decode_from_slot(slot)?;
 
         slot.is_occupied = 0;
+        slot.len = 0;
+
         self.head = (self.head + 1) % self.capacity;
         self.count -= 1;
 
-        Ok(res)
+        Ok(ev)
     }
 }
