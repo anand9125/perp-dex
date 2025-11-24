@@ -1,10 +1,6 @@
 use anchor_lang::prelude::*;
-use crate::{
-    MAX_REQUESTS,
-    MatchedOrder,
-    PerpError,
-    slot::{EVENT_SLOT_LEN, EventSlot},
-};
+use crate::{MatchedOrder, MAX_REQUESTS, PerpError};
+use crate::slot::{EVENT_SLOT_LEN, EventSlot};
 
 #[account(zero_copy)]
 #[repr(C)]
@@ -19,9 +15,7 @@ pub struct EventQueue {
 
 impl EventQueue {
     pub const SIZE: usize = core::mem::size_of::<EventQueue>();
-}
 
-impl EventQueue {
     pub fn init(&mut self) {
         self.head = 0;
         self.tail = 0;
@@ -36,20 +30,25 @@ impl EventQueue {
             slot.data = [0; EVENT_SLOT_LEN];
         }
     }
+
     fn encode_into_slot(slot: &mut EventSlot, ev: &MatchedOrder) -> Result<()> {
         let encoded = ev
             .try_to_vec()
             .map_err(|_| error!(PerpError::SerializationFailed))?;
 
-        require!(encoded.len() <= EVENT_SLOT_LEN, PerpError::SerializationFailed);
+        require!(
+            encoded.len() <= EVENT_SLOT_LEN,
+            PerpError::SerializationFailed
+        );
 
         slot.data[..encoded.len()].copy_from_slice(&encoded);
         if encoded.len() < EVENT_SLOT_LEN {
             slot.data[encoded.len()..].fill(0);
         }
 
-        slot.is_occupied = 0;
+        slot.is_occupied = 1; // FIXED
         slot.len = encoded.len() as u16;
+
         Ok(())
     }
 
@@ -57,12 +56,14 @@ impl EventQueue {
         require!(slot.is_occupied == 1, PerpError::QueueEmpty);
 
         let len = slot.len as usize;
-        require!(len > 0 && len <= EVENT_SLOT_LEN, PerpError::DeserializationFailed);
+        require!(
+            len > 0 && len <= EVENT_SLOT_LEN,
+            PerpError::DeserializationFailed
+        );
 
         MatchedOrder::try_from_slice(&slot.data[..len])
             .map_err(|_| error!(PerpError::DeserializationFailed))
     }
-
 
     pub fn push(&mut self, ev: &MatchedOrder) -> Result<()> {
         require!(

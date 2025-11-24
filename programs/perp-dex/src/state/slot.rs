@@ -13,11 +13,12 @@ pub struct RequestSlot {
 }
 
 
+
 #[zero_copy]
 #[repr(C)]
 pub struct EventSlot {
-    pub len: u16,                     // 2 bytes, aligned at offset 0
-    pub is_occupied: u8,              // 1 byte, offset 2
-    pub _pad: [u8; 5],                // 5 bytes, offset 3 → header size = 8
-    pub data: [u8; EVENT_SLOT_LEN],   // 128 bytes, offset 8
+    pub data: [u8; EVENT_SLOT_LEN], // FIRST (for alignment + match RequestSlot)
+    pub len: u16,
+    pub is_occupied: u8,
+    pub _pad: [u8; 5], // Padding to 8-byte boundary
 }

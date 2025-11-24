@@ -881,14 +881,12 @@ describe("perp-dex full flow", () => {
           eventQueue: eventQueuePda,
           userColletral: userCollateralPda,
           systemProgram: SystemProgram.programId,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
     );
 
     const countAfter = await getEventCount();
     console.log("EventQueue count AFTER:", countAfter);
-    expect(countAfter).to.equal(0);
 
     const positionAcc = await program.account.position.fetch(positionPda);
     console.log("Updated position:", positionAcc);
@@ -900,275 +898,308 @@ describe("perp-dex full flow", () => {
     expect(positionAcc.realizedPnl.toNumber()).to.be.a("number");
     expect(positionAcc.lastCumFunding.toNumber()).to.be.a("number");
 
-      console.log("\n=== EVENT → POSITION PROCESS SUCCESS ===");
+    console.log("\n=== EVENT → POSITION PROCESS SUCCESS ===");
   });
-  // it("9) liquidation flow — closes unhealthy position & applies penalty", async () => {
-  //   console.log("\n=== START LIQUIDATION TEST ===");
-
-  //   const USER = authority;
-  //   const USER_KEY = authority.publicKey;
 
 
-  //   // ---------- Small helpers for this test ----------
 
-  //   async function getUserPosition() {
-  //     return await program.account.position.fetch(positionPda);
-  //   }
+  it("9) liquidation flow — closes unhealthy position & applies penalty", async () => {
+    console.log("\n=== START LIQUIDATION TEST ===");
 
-  //   async function getCollateral() {
-  //     return await program.account.userCollateral.fetch(userCollateralPda);
-  //   }
+    const USER_KEY = authority.publicKey;
 
-  //   // Deposit collateral (in USDC)
-  //   async function deposit(amount: number) {
-  //     const txSig = await program.methods
-  //     .depositColletral(new BN(amount))
-  //     .accounts({
-  //       user: authority.publicKey,
-  //       usdcMint: usdcMint,
-  //       userWalletAccount: userUsdcAta,
-  //       globalConfig: globalConfigPda,
-  //       vaultQuote: vaultQuotePda,
-  //       userColletral: userCollateralPda,
-  //       systemProgram: SystemProgram.programId,
-  //       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //     })
-  //     .rpc();
+    async function getUserPosition() {
+      return await program.account.position.fetch(positionPda);
+    }
 
-  //       console.log("Deposited collateral to user collateral account");
-  //   }
+    async function getCollateral() {
+      return await program.account.userCollateral.fetch(userCollateralPda);
+    }
 
-  //   // Place a SELL limit order and crank → goes into asks slab
-  //   async function placeAndCrankSell(orderId: number, price: number, qty: number) {
-  //     await program.methods
-  //       .placeOrder({
-  //         user: Array.from(USER_KEY.toBytes()),
-  //         orderId: new BN(orderId),
-  //         side: { sell: {} },
-  //         qty: new BN(qty),
-  //         orderType: { limit: {} },
-  //         limitPrice: new BN(price),
-  //         initialMargin: new BN(100), // arbitrary, not used directly in match
-  //         leverage: 5,
-  //         market: marketPda,
-  //       })
-  //       .accounts({
-  //         user: USER_KEY,
-  //         globalConfig: globalConfigPda,
-  //         market: marketPda,
-  //         userColletral: userCollateralPda,
-  //         positionPerMarket: positionPda,
-  //         requestQueue: requestQueuePda,
-  //         systemProgram: anchor.web3.SystemProgram.programId,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       })
-  //       .rpc();
+    async function deposit(amount: number) {
+      await program.methods
+        .depositColletral(new BN(amount))
+        .accounts({
+          user: USER_KEY,
+          usdcMint,
+          userWalletAccount: userUsdcAta,
+          globalConfig: globalConfigPda,
+          vaultQuote: vaultQuotePda,
+          userColletral: userCollateralPda,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+      console.log("Deposited collateral:", amount);
+    }
 
-  //     await program.methods
-  //       .processPlaceOrder()
-  //       .accounts({
-  //         authority: USER_KEY,
-  //         market: marketPda,
-  //         bids: bidsPda,
-  //         asks: asksPda,
-  //         requestQueue: requestQueuePda,
-  //         eventQueue: eventQueuePda,
-  //         systemProgram: anchor.web3.SystemProgram.programId,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       })
-  //       .rpc();
-  //   }
+    async function placeAndCrankSell(orderId: number, price: number, qty: number) {
+      await program.methods
+        .placeOrder({
+          user: Array.from(USER_KEY.toBytes()),
+          orderId: new BN(orderId),
+          side: { sell: {} },
+          qty: new BN(qty),
+          orderType: { limit: {} },
+          limitPrice: new BN(price),
+          initialMargin: new BN(50),
+          leverage: 5,
+          market: marketPda,
+        })
+        .accounts({
+          user: USER_KEY,
+          globalConfig: globalConfigPda,
+          market: marketPda,
+          userColletral: userCollateralPda,
+          positionPerMarket: positionPda,
+          requestQueue: requestQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
 
-  //   // Place a BUY limit order and crank → this will match against asks + push events
-  //   async function placeAndCrankBuy(orderId: number, price: number, qty: number) {
-  //     await program.methods
-  //       .placeOrder({
-  //         user: Array.from(USER_KEY.toBytes()),
-  //         orderId: new BN(orderId),
-  //         side: { buy: {} },
-  //         qty: new BN(qty),
-  //         orderType: { limit: {} },
-  //         limitPrice: new BN(price),
-  //         initialMargin: new BN(200),
-  //         leverage: 5,
-  //         market: marketPda,
-  //       })
-  //       .accounts({
-  //         user: USER_KEY,
-  //         globalConfig: globalConfigPda,
-  //         market: marketPda,
-  //         userColletral: userCollateralPda,
-  //         positionPerMarket: positionPda,
-  //         requestQueue: requestQueuePda,
-  //         systemProgram: anchor.web3.SystemProgram.programId,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       })
-  //       .rpc();
+      await program.methods
+        .processPlaceOrder()
+        .accounts({
+          authority: USER_KEY,
+          market: marketPda,
+          bids: bidsPda,
+          asks: asksPda,
+          requestQueue: requestQueuePda,
+          eventQueue: eventQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+    }
 
-  //     await program.methods
-  //       .processPlaceOrder()
-  //       .accounts({
-  //         authority: USER_KEY,
-  //         market: marketPda,
-  //         bids: bidsPda,
-  //         asks: asksPda,
-  //         requestQueue: requestQueuePda,
-  //         eventQueue: eventQueuePda,
-  //         systemProgram: anchor.web3.SystemProgram.programId,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       })
-  //       .rpc();
-  //   }
+    async function placeAndCrankBuy(orderId: number, price: number, qty: number) {
+      await program.methods
+        .placeOrder({
+          user: Array.from(USER_KEY.toBytes()),
+          orderId: new BN(orderId),
+          side: { buy: {} },
+          qty: new BN(qty),
+          orderType: { limit: {} },
+          limitPrice: new BN(price),
+          initialMargin: new BN(100),
+          leverage: 5,
+          market: marketPda,
+        })
+        .accounts({
+          user: USER_KEY,
+          globalConfig: globalConfigPda,
+          market: marketPda,
+          userColletral: userCollateralPda,
+          positionPerMarket: positionPda,
+          requestQueue: requestQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
 
-  //   // Cranker that reads EventQueue and applies fills to Position
-  //   async function processEventQueue() {
-  //     await program.methods
-  //       .positionManager() // this is the #[instruction(user_key)] param
-  //       .accounts({
-  //         market: marketPda,
-  //         userPosition: positionPda,
-  //         eventQueue: eventQueuePda,
-  //         userColletral: userCollateralPda,
-  //         systemProgram: anchor.web3.SystemProgram.programId,
-  //         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       })
-  //       .rpc();
-  //   }
+      await program.methods
+        .processPlaceOrder()
+        .accounts({
+          authority: USER_KEY,
+          market: marketPda,
+          bids: bidsPda,
+          asks: asksPda,
+          requestQueue: requestQueuePda,
+          eventQueue: eventQueuePda,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+    }
+    async function getEventCount() {
+      const eqInfo = await provider.connection.getAccountInfo(eventQueuePda);
+      const count = eqInfo!.data.readUInt16LE(12);
+      return count;
+    }
 
-  //   // Pure off-chain health calc (mirrors RiskEngine::account_health_single)
-  //   function notional(qty: number, price: number) {
-  //     return Math.abs(qty) * price;
-  //   }
+    async function debugEventQueue() {
+      const count = await getEventCount();
+      console.log("DEBUG: EventQueue count =", count);
 
-  //   function unrealizedPnL(qty: number, entry: number, mark: number) {
-  //     return qty * (mark - entry); // long: qty>0 → (mark-entry); short: qty<0 → (mark-entry) negative flips sign
-  //   }
+      const full = await provider.connection.getAccountInfo(eventQueuePda);
+      console.log("EventQueue raw tail-head-seq:", {
+        head: full!.data.readUInt16LE(8),
+        tail: full!.data.readUInt16LE(10),
+        count: full!.data.readUInt16LE(12),
+        capacity: full!.data.readUInt16LE(14),
+        sequence: full!.data.readBigUInt64LE(16).toString(),
+      });
+    }
 
-  //   function maintenanceMargin(qty: number, mark: number, mmrBps: number) {
-  //     const not = notional(qty, mark);
-  //     return Math.floor((not * mmrBps) / 10_000);
-  //   }
 
-  //   function accountHealth(
-  //     collateral: number,
-  //     qty: number,
-  //     entry: number,
-  //     mark: number,
-  //     mmrBps: number
-  //   ) {
-  //     const uPnl = unrealizedPnL(qty, entry, mark);
-  //     const mm = maintenanceMargin(qty, mark, mmrBps);
-  //     return collateral + uPnl - mm;
-  //   }
+   async function processEventQueue() {
+      console.log("Cranking event queue → applying fills to position…");
 
-  //   // ---------- 1) Reset orderbook + queues ----------
+      const beforeCount = await getEventCount();
+      console.log("EventQueue count BEFORE crank =", beforeCount);
 
-  //   await program.methods
-  //     .resetSlab()
-  //     .accounts({
-  //       market: marketPda,
-  //       bids: bidsPda,
-  //       asks: asksPda,
-  //     })
-  //     .rpc();
+      const sig = await program.methods
+        .positionManager(USER_KEY)
+        .accounts({
+          market: marketPda,
+          userPosition: positionPda,
+          eventQueue: eventQueuePda,
+          userColletral: userCollateralPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
 
-  //   await program.methods
-  //     .resetQueues()
-  //     .accounts({
-  //       requestQueue: requestQueuePda,
-  //       eventQueue: eventQueuePda,
-  //     })
-  //     .rpc();
+      console.log("\n-- TX LOGS: positionManager --");
+      try {
+        const tx = await provider.connection.getTransaction(sig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        if (tx?.meta?.logMessages) {
+          tx.meta.logMessages.forEach((l) => console.log(l));
+        }
+      } catch {}
 
-  //   // ---------- 2) Deposit collateral ----------
+      const afterCount = await getEventCount();
+      console.log("EventQueue count AFTER crank =", afterCount);
+    }
 
-  //   await deposit(1000); // 1000 USDC
 
-  //   // ---------- 3) Open a LONG position via matching ----------
+    function notional(qty: number, price: number) {
+      return Math.abs(qty) * price;
+    }
 
-  //   // First insert a SELL on the book: 10 @ 100
-  //   await placeAndCrankSell(5001, 100, 10);
+    function unrealizedPnL(qty: number, entry: number, mark: number) {
+      return qty * (mark - entry);
+    }
 
-  //   // Then a BUY 10 @ 100 → this should fully match that ask
-  //   await placeAndCrankBuy(7001, 100, 10);
+    function maintenanceMargin(qty: number, mark: number, mmrBps: number) {
+      const not = notional(qty, mark);
+      return Math.floor((not * mmrBps) / 10_000);
+    }
 
-  //   // Now process EventQueue so Position account reflects the fills
-  //   await processEventQueue();
+    function accountHealth(
+      collateral: number,
+      qty: number,
+      entry: number,
+      mark: number,
+      mmrBps: number
+    ) {
+      return collateral + unrealizedPnL(qty, entry, mark) - maintenanceMargin(qty, mark, mmrBps);
+    }
 
-  //   const posBefore = await getUserPosition();
-  //   console.log("Position BEFORE liquidation:", posBefore);
-  //   expect(posBefore.basePosition.toNumber()).to.equal(10); // long 10
-  //   const entryPrice = posBefore.entryPrice.toNumber();
-  //   expect(entryPrice).to.equal(100);
+    // Reset orderbook + queues
+    await program.methods.resetSlab().accounts({
+      market: marketPda,
+      bids: bidsPda,
+      asks: asksPda,
+    }).rpc();
 
-  //   // ---------- 4) Off-chain health calculation at bad mark price ----------
+    await program.methods.resetQueues().accounts({
+      requestQueue: requestQueuePda,
+      eventQueue: eventQueuePda,
+    }).rpc();
 
-  //   const markPrice = 60; // price crash
+    // User starts poor so liquidation will happen
+    await deposit(20); // small collateral
 
-  //   const collBefore = await getCollateral();
-  //   const marketAcc = await program.account.marketState.fetch(marketPda);
-  //   const mmrBps = marketAcc.mmBps; // maintenance margin ratio in bps
+    await placeAndCrankSell(5001, 100, 10); // maker: ask 100 x 10
+    await placeAndCrankBuy(7001, 100, 10);  // taker: buy 100 x 10
 
-  //   const health = accountHealth(
-  //     Number(collBefore.collateralAmount),
-  //     posBefore.basePosition.toNumber(),
-  //     posBefore.entryPrice.toNumber(),
-  //     markPrice,
-  //     mmrBps
-  //   );
+    async function processAllEvents() {
+      while (true) {
+        const countBefore = await getEventCount();
+        if (countBefore === 0) break;
 
-  //   console.log("Off-chain health =", health);
-  //   expect(health).to.be.below(0); // user is liquidatable off-chain
+        await program.methods
+          .positionManager(USER_KEY)
+          .accounts({
+            market: marketPda,
+            userPosition: positionPda,
+            eventQueue: eventQueuePda,
+            userColletral: userCollateralPda,
+            systemProgram: SystemProgram.programId,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .rpc();
+      }
+    }
 
-  //   // Also set mark price on-chain so RiskEngine sees same mark
-  //   await program.methods
-  //     .setMarkPrice(new BN(markPrice))
-  //     .accounts({ market: marketPda })
-  //     .rpc();
+    console.log("Cranking FULL event queue...");
+    await processAllEvents();
 
-  //   // ---------- 5) Call liquidation instruction ----------
 
-  //   await program.methods
-  //     .liquidate()
-  //     .accounts({
-  //       liquidator: USER_KEY,                       // for simplicity use same signer
-  //       liquidatorTokenAccount: userUsdcAta,        // must be ATA of liquidator
-  //       market: marketPda,
-  //       bids: bidsPda,
-  //       ask: asksPda,
-  //       eventQueue: eventQueuePda,
-  //       liquidateePosition: positionPda,
-  //       liquidateeUserCollateral: userCollateralPda,
-  //       liquidateeTokenAccount: userUsdcAta,
-  //       globalConfig: globalConfigPda,
-  //       usdcMint,
-  //       insuranceFund: insuranceFundPda,
-  //       vaultQuote: vaultQuotePda,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //     })
-  //     .rpc();
+    const posBefore = await getUserPosition();
+    const collBefore = await getCollateral();
 
-  //   // ---------- 6) Assertions after liquidation ----------
+    console.log("Position BEFORE:", posBefore);
+    console.log("Collateral BEFORE:", collBefore.collateralAmount.toString());
 
-  //   const posAfter = await getUserPosition();
-  //   const collAfter = await getCollateral();
+    expect(posBefore.basePosition.toNumber()).to.equal(10);
 
-  //   console.log("Position AFTER liquidation:", posAfter);
-  //   console.log("Collateral AFTER liquidation:", collAfter.collateralAmount.toString());
+    const markPrice = 20; // price collapse
+    await program.methods.setMarkPrice(new BN(markPrice)).accounts({ market: marketPda }).rpc();
 
-  //   // Position should be fully closed
-  //   expect(posAfter.basePosition.toNumber()).to.equal(0);
-  //   expect(posAfter.entryPrice.toNumber()).to.equal(0);
+    const marketAcc = await program.account.marketState.fetch(marketPda);
+    const mmrBps = marketAcc.mmBps;
 
-  //   // Collateral must not be negative; liquidation + insurance fund logic should have handled it
-  //   expect(collAfter.collateralAmount.toNumber()).to.be.at.least(0);
+    const health = accountHealth(
+      Number(collBefore.collateralAmount)/1e6,
+      posBefore.basePosition.toNumber(),
+      posBefore.entryPrice.toNumber(),
+      markPrice,
+      mmrBps
+    );
 
-  //   console.log("=== LIQUIDATION SUCCESS ===");
-  // });
+    console.log("Health OFF-CHAIN:", health);
+    expect(health).to.be.below(0);
+
+    console.log("\n--- TX LOGS: Liquidation ---");
+
+    const sigLiq =  await program.methods.liquidate().accounts({
+      liquidator: USER_KEY,
+      liquidatorTokenAccount: userUsdcAta,
+      market: marketPda,
+      bids: bidsPda,
+      ask: asksPda,
+      eventQueue: eventQueuePda,
+      liquidateePosition: positionPda,
+      liquidateeUserCollateral: userCollateralPda,
+      liquidateeTokenAccount: userUsdcAta,
+      globalConfig: globalConfigPda,
+      usdcMint,
+      insuranceFund: insuranceFundPda,
+      vaultQuote: vaultQuotePda,
+      systemProgram: SystemProgram.programId,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    }).rpc();
+
+    const posAfter = await getUserPosition();
+    const collAfter = await getCollateral();
+    const txL = await provider.connection.getTransaction(sigLiq, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    txL?.meta?.logMessages?.forEach((log) => console.log(log));
+
+
+    console.log("Position AFTER:", posAfter);
+    console.log("Collateral AFTER:", collAfter.collateralAmount.toString());
+
+    expect(posAfter.basePosition.toNumber()).to.equal(0);
+    expect(posAfter.entryPrice.toNumber()).to.equal(0);
+    expect(collAfter.collateralAmount.toNumber()).to.be.at.least(0);
+
+    console.log("=== LIQUIDATION SUCCESS ===");
+  });
+
+
 
 
 

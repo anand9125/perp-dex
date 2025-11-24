@@ -42,6 +42,8 @@ pub struct PositionIns<'info> {
 
 impl<'info> PositionIns<'info> {
     pub fn process(&mut self, user_key: Pubkey) -> Result<()> {
+
+        require!(user_key == self.user_position.owner, PerpError::Unauthorized);
         let fill_event = {
             let mut queue = self.event_queue.load_mut()?;
             if queue.count == 0 {
