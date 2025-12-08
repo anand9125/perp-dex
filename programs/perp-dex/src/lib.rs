@@ -50,13 +50,14 @@ pub mod perp_dex {
         Ok(())
     }
      
-     pub fn set_mark_price(
+    pub fn set_mark_price(
         ctx:Context<SetMarkPrice>,
         mark_price:u64
     )->Result<()>{
         ctx.accounts.process(mark_price)?;
         Ok(())
     }
+    
     pub fn process_place_order(
         ctx:Context<ProcessOrder>,
     )->Result<()>{

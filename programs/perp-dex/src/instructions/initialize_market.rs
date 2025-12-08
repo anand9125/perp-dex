@@ -93,27 +93,20 @@ impl<'info> InitializeMarket<'info> {
         msg!("INIT_MARKET: Starting bid slab initialization");
         {
             let mut bid_data = bid_account_info.try_borrow_mut_data()?;
-            msg!("INIT_MARKET: Bid account total length: {}", bid_data.len());
             
-            // CRITICAL: Skip the 8-byte Anchor discriminator
             let slab_data: &mut [u8] = &mut bid_data[DISCRIMINATOR_LEN..];
-            msg!("INIT_MARKET: Bid slab data length (after discriminator): {}", slab_data.len());
             
             Slab::initialize(slab_data, BID_SLAB_CAPACITY)?;
-            msg!("INIT_MARKET: Bid slab initialized");
         }
 
         msg!("INIT_MARKET: Starting ask slab initialization");
         {
             let mut ask_data = ask_account_info.try_borrow_mut_data()?;
-            msg!("INIT_MARKET: Ask account total length: {}", ask_data.len());
             
             // CRITICAL: Skip the 8-byte Anchor discriminator
             let slab_data: &mut [u8] = &mut ask_data[DISCRIMINATOR_LEN..];
-            msg!("INIT_MARKET: Ask slab data length (after discriminator): {}", slab_data.len());
             
             Slab::initialize(slab_data, ASK_SLAB_CAPACITY)?;
-            msg!("INIT_MARKET: Ask slab initialized");
         }
 
         emit!(MarketInitialized {

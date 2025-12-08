@@ -57,3 +57,4 @@ pub enum PerpError {
     #[msg("InvalidVaultQuoteMint ")]
     InvalidVaultQuoteMint 
 }
+

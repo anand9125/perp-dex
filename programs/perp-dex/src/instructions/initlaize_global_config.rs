@@ -90,7 +90,6 @@ impl<'info> InitializeGlobalConfig<'info> {
                 || global_config.authority == self.authority.key(),
             PerpError::NotAuthorized
         );
-    
         global_config.authority = self.authority.key();
         global_config.vault_quote = self.vault_quote.key();
         global_config.insurance_fund = self.insurance_fund.key();
@@ -100,13 +99,6 @@ impl<'info> InitializeGlobalConfig<'info> {
         global_config.trading_paused = is_paused;
         global_config.funding_interval_secs = funding_interval_secs;
         global_config.bump = bump.global_config;
-        // let rq_info = self.request_queue.as_ref().to_account_info();
-        // let mut data = rq_info.try_borrow_mut_data()?;
-        // let dq = 8;
-        // for byte in &mut data[dq..] {
-        //     *byte = 0;
-        // }
-
         let mut rq = self.request_queue.load_init()?; 
         rq.init(); 
         let mut eq = self.event_queues.load_init()?;

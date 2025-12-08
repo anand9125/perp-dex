@@ -134,7 +134,7 @@ pub fn match_against_book<'info>(
             timestamp: now,
         };
 
-        // Taker event (incoming order)
+        // // Taker event (incoming order)
         let taker_event = MatchedOrder {
             is_maker: false,
             order_id: order.order_id,
