@@ -4,7 +4,10 @@
 ![Solana](https://img.shields.io/badge/solana-4E44CE?style=for-the-badge&logo=solana&logoColor=white)
 ![Anchor](https://img.shields.io/badge/anchor-4E44CE?style=for-the-badge&logo=solana&logoColor=white)
 
+Architecture Explaination : https://x.com/AnandChaud65750/status/2011853667771826204?s=20
+
 A high-performance decentralized perpetual futures exchange built on Solana, implementing a complete on-chain trading architecture with slab-based orderbook, matching engine, margin system, and liquidation mechanisms.
+
 
 ## 🎯 Overview
 
