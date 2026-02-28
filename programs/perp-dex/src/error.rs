@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 pub enum PerpError {
     #[msg("Custom error message")]
     CustomError,
-    #[msg(" user is unauhtorized")]
+    #[msg(" user is unauthorized")]
     NotAuthorized,
     #[msg("Queue is full")]
     QueueFull,
@@ -51,7 +51,7 @@ pub enum PerpError {
     #[msg("SerializationFailed")]
     SerializationFailed,
     #[msg("DeserializationFailed")]
-    DeserializationFailed   ,
+    DeserializationFailed,
     #[msg("Unauthorized")]
     Unauthorized,
     #[msg("Event at head of queue is for another user")]

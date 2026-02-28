@@ -76,3 +76,25 @@ the `Liquidation` instruction has too many accounts for the BPF stack. To fix:
 3. `rm -rf target && anchor build`.
 
 Do not delete `Cargo.lock` unless you re-run the pin commands above after regenerating it.
+
+---
+
+## Deploying to devnet
+
+1. **Wallet and SOL**  
+   Use `~/.config/solana/id.json` (or set `ANCHOR_WALLET`). Get devnet SOL: `solana airdrop 2` after setting cluster to devnet.
+
+2. **Point CLI to devnet**
+   ```bash
+   solana config set --url devnet
+   solana balance
+   ```
+
+3. **Build and deploy**
+   ```bash
+   anchor build
+   anchor deploy --provider.cluster devnet
+   ```
+   Program id comes from `target/deploy/perp_dex-keypair.json` and is already in `Anchor.toml` for devnet.
+
+4. **Optional:** Run tests against devnet with `ANCHOR_PROVIDER_URL=https://api.devnet.solana.com anchor run test` (only after deploying and running bootstrap on devnet).

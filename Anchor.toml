@@ -7,7 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-perp_dex = "6FFcqM61UALXUBeXPDQw1J8MLH9r9T5cTsV3uFxQdqLK"
+perp_dex = "81dJfLhAbLPYQKbEHskyLvQdzbQffJzG9tVVfFRhpZ6p"
+
+[programs.devnet]
+perp_dex = "81dJfLhAbLPYQKbEHskyLvQdzbQffJzG9tVVfFRhpZ6p"
 
 [provider]
 cluster = "localnet"

@@ -166,6 +166,21 @@ describe("PerpDex", () => {
     return info!.data.readUInt16LE(REQUEST_QUEUE_COUNT_OFFSET);
   }
 
+  /** Reset order book and both queues for a clean state. */
+  async function resetOrderBookAndQueues(): Promise<void> {
+    await program.methods.resetSlab().accounts({ market: marketPda, bids: bidsPda, asks: asksPda } as any).rpc();
+    await program.methods
+      .resetQueues()
+      .accounts({ requestQueue: requestQueuePda, eventQueue: eventQueuePda } as any)
+      .rpc();
+  }
+
+  /** Place order and crank once. */
+  async function placeAndCrank(order: any): Promise<void> {
+    await program.methods.placeOrder(order).accounts(placeOrderAccounts()).rpc();
+    await program.methods.processPlaceOrder().accounts(processOrderAccounts()).rpc();
+  }
+
   before(async () => {
     try {
       await connection.getVersion();
@@ -175,6 +190,22 @@ describe("PerpDex", () => {
           (process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899") +
           ". Start a local validator with 'solana-test-validator' in another terminal, or run 'anchor test' (which starts the validator for you)."
       );
+    }
+
+    const programAccount = await connection.getAccountInfo(program.programId);
+    if (!programAccount || programAccount.data.length === 0) {
+      throw new Error(
+        "Perp DEX program is not deployed. Run: anchor build && anchor deploy --provider.cluster localnet (with validator running), or use 'anchor test'."
+      );
+    }
+
+    const rpc = process.env.ANCHOR_PROVIDER_URL || "";
+    if (rpc.includes("127.0.0.1") || rpc.includes("localhost")) {
+      const balance = await connection.getBalance(authority.publicKey);
+      if (balance < 1e9) {
+        const sig = await connection.requestAirdrop(authority.publicKey, 2e9);
+        await connection.confirmTransaction(sig);
+      }
     }
 
     usdcMint = await createMint(
@@ -394,6 +425,67 @@ describe("PerpDex", () => {
       assert.equal(userColl.owner.toBase58(), authority.publicKey.toBase58());
       assert.equal(userColl.collateralAmount.toString(), depositAmount.toString());
     });
+    it("rejects deposit of zero", async () => {
+      try {
+        await program.methods.depositColletral(new anchor.BN(0)).accounts({
+          user: authority.publicKey,
+          usdcMint,
+          userWalletAccount: userUsdcAta,
+          globalConfig: globalConfigPda,
+          vaultQuote: vaultQuotePda,
+          userColletral: userCollateralPda,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any).rpc();
+        assert.fail("expected InvalidAmount");
+      } catch (e: any) {
+        expect(e.message || e.toString()).to.match(/InvalidAmount|3012/i);
+      }
+    });
+
+    it("second deposit adds to collateral", async () => {
+      await program.methods.depositColletral(new anchor.BN(50_000_000)).accounts({
+        user: authority.publicKey,
+        usdcMint,
+        userWalletAccount: userUsdcAta,
+        globalConfig: globalConfigPda,
+        vaultQuote: vaultQuotePda,
+        userColletral: userCollateralPda,
+        systemProgram: SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      } as any).rpc();
+      const userColl = await program.account.userCollateral.fetch(userCollateralPda);
+      expect(userColl.collateralAmount.toString()).to.equal("150000000");
+    });
+  });
+
+  describe("2b. Market & reset", () => {
+    it("set_mark_price updates market last oracle price", async () => {
+      const newPrice = new anchor.BN(105_000_000);
+      await program.methods.setMarkPrice(newPrice).accounts({ market: marketPda } as any).rpc();
+      const market = await program.account.marketState.fetch(marketPda);
+      expect(market.lastOraclePrice.toString()).to.equal(newPrice.toString());
+    });
+
+    it("reset_queues clears request and event queue counts", async () => {
+      await program.methods
+        .resetQueues()
+        .accounts({ requestQueue: requestQueuePda, eventQueue: eventQueuePda } as any)
+        .rpc();
+      expect(await getRequestQueueCount()).to.equal(0);
+      expect(await getEventQueueCount()).to.equal(0);
+    });
+
+    it("reset_slab allows placing and cranking again", async () => {
+      await resetOrderBookAndQueues();
+      const order = buildOrder({ orderId: 99, side: "buy", qty: 2, limitPrice: 100 });
+      await placeAndCrank(order);
+      expect(await getRequestQueueCount()).to.equal(0);
+      const bidInfo = await connection.getAccountInfo(bidsPda);
+      expect(bidInfo!.data.length).to.be.greaterThan(8);
+    });
   });
 
   describe("3. Orders", () => {
@@ -417,7 +509,35 @@ describe("PerpDex", () => {
       expect(rq.count).to.equal(1);
       expect(position.owner.toBase58()).to.equal(authority.publicKey.toBase58());
       expect(position.status).to.deep.equal({ pending: {} });
-      expect(userCol.collateralAmount.toString()).to.equal("100000000");
+      expect(userCol.collateralAmount.toString()).to.equal("150000000");
+    });
+
+    it("rejects place_order when insufficient collateral for initial margin", async () => {
+      await resetOrderBookAndQueues();
+      const userColl = await program.account.userCollateral.fetch(userCollateralPda);
+      const collateral = userColl.collateralAmount.toNumber();
+      const market = await program.account.marketState.fetch(marketPda);
+      const mark = market.lastOraclePrice.toNumber();
+      const imBps = market.imBps;
+      const orderNotional = 200 * mark;
+      const requiredIm = Math.floor((orderNotional * imBps) / 10_000);
+      expect(requiredIm).to.be.greaterThan(collateral);
+      const order = buildOrder({
+        orderId: 301,
+        side: "buy",
+        qty: 200,
+        limitPrice: mark,
+        initialMargin: requiredIm,
+        leverage: 10,
+      });
+      try {
+        await program.methods.placeOrder(order).accounts(placeOrderAccounts()).rpc();
+        assert.fail("expected insufficient collateral");
+      } catch (e: any) {
+        expect(e.message || e.toString()).to.satisfy((s: string) =>
+          /InsufficientCollateral|6011/i.test(s)
+        );
+      }
     });
 
     it("crank processes request queue and adds limit order to bid book", async () => {
@@ -507,6 +627,26 @@ describe("PerpDex", () => {
       const askInfo = await connection.getAccountInfo(asksPda);
       expect(askInfo!.data.length).to.be.greaterThan(8);
     });
+
+    it("sell order rests on asks, then buy matches and leaves remainder on bids", async () => {
+      await resetOrderBookAndQueues();
+      await placeAndCrank(
+        buildOrder({ orderId: 1, side: "sell", qty: 10, limitPrice: 100, initialMargin: 10, leverage: 5 })
+      );
+      expect(await getRequestQueueCount()).to.equal(0);
+      await placeAndCrank(
+        buildOrder({ orderId: 2, side: "buy", qty: 4, limitPrice: 100, initialMargin: 10, leverage: 5 })
+      );
+      const eqCount = await getEventQueueCount();
+      expect(eqCount).to.be.greaterThan(0);
+      await program.methods
+        .positionManager(authority.publicKey)
+        .accounts(positionManagerAccounts())
+        .rpc();
+      const position = await program.account.position.fetch(positionPda);
+      expect(position.basePosition.toNumber()).to.equal(4);
+      expect(position.entryPrice.toNumber()).to.equal(100);
+    });
   });
 
   describe("4. Position from events", () => {
@@ -581,6 +721,115 @@ describe("PerpDex", () => {
       expect(position.basePosition.toNumber()).to.be.a("number");
       expect(position.realizedPnl.toNumber()).to.be.a("number");
       expect(position.lastCumFunding.toNumber()).to.be.a("number");
+    });
+
+    it("position_manager with empty event queue does nothing and does not error", async () => {
+      await resetOrderBookAndQueues();
+      await program.methods
+        .positionManager(authority.publicKey)
+        .accounts(positionManagerAccounts())
+        .rpc();
+      const position = await program.account.position.fetch(positionPda);
+      expect(position.basePosition.toNumber()).to.equal(0);
+    });
+
+    it("position_manager consumes multiple events for user and updates position correctly", async () => {
+      await resetOrderBookAndQueues();
+      await placeAndCrank(
+        buildOrder({ orderId: 1, side: "sell", qty: 10, limitPrice: 100, initialMargin: 10, leverage: 5 })
+      );
+      await placeAndCrank(
+        buildOrder({ orderId: 2, side: "buy", qty: 10, limitPrice: 100, initialMargin: 10, leverage: 5 })
+      );
+      expect(await getEventQueueCount()).to.be.greaterThan(0);
+      await program.methods
+        .positionManager(authority.publicKey)
+        .accounts(positionManagerAccounts())
+        .rpc();
+      const position = await program.account.position.fetch(positionPda);
+      expect(position.basePosition.toNumber()).to.equal(10);
+      expect(position.entryPrice.toNumber()).to.be.greaterThan(0);
+    });
+  });
+
+  describe("5. Withdraw", () => {
+    it("withdraws partial collateral and updates vault and user ATA", async () => {
+      const beforeColl = await program.account.userCollateral.fetch(userCollateralPda);
+      const withdrawAmount = new anchor.BN(30_000_000);
+      const userAtaBefore = await getAccount(connection, userUsdcAta);
+
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          user: authority.publicKey,
+          userColletral: userCollateralPda,
+          globalConfig: globalConfigPda,
+          usdcMint,
+          vaultQuote: vaultQuotePda,
+          userAta: userUsdcAta,
+          market: marketPda,
+          userPosition: positionPda,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .rpc();
+
+      const userColl = await program.account.userCollateral.fetch(userCollateralPda);
+      const expectedColl = beforeColl.collateralAmount.toNumber() - 30_000_000;
+      expect(userColl.collateralAmount.toNumber()).to.equal(expectedColl);
+      const userAtaAfter = await getAccount(connection, userUsdcAta);
+      expect(Number(userAtaAfter.amount) - Number(userAtaBefore.amount)).to.equal(30_000_000);
+    });
+
+    it("rejects withdraw of zero", async () => {
+      try {
+        await program.methods
+          .withdraw(new anchor.BN(0))
+          .accounts({
+            user: authority.publicKey,
+            userColletral: userCollateralPda,
+            globalConfig: globalConfigPda,
+            usdcMint,
+            vaultQuote: vaultQuotePda,
+            userAta: userUsdcAta,
+            market: marketPda,
+            userPosition: positionPda,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          } as any)
+          .rpc();
+        assert.fail("expected InvalidAmount");
+      } catch (e: any) {
+        expect(e.message || e.toString()).to.match(/InvalidAmount|3012/i);
+      }
+    });
+
+    it("rejects withdraw exceeding collateral", async () => {
+      try {
+        await program.methods
+          .withdraw(new anchor.BN(200_000_000))
+          .accounts({
+            user: authority.publicKey,
+            userColletral: userCollateralPda,
+            globalConfig: globalConfigPda,
+            usdcMint,
+            vaultQuote: vaultQuotePda,
+            userAta: userUsdcAta,
+            market: marketPda,
+            userPosition: positionPda,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          } as any)
+          .rpc();
+        assert.fail("expected InsufficientCollateral");
+      } catch (e: any) {
+        expect(e.message || e.toString()).to.satisfy((s: string) =>
+          /InsufficientCollateral|6011/i.test(s)
+        );
+      }
     });
   });
 });
