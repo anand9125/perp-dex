@@ -1,5 +1,6 @@
 [toolchain]
 package_manager = "yarn"
+anchor_version = "0.31.1"
 
 [features]
 resolution = true
@@ -7,9 +8,6 @@ skip-lint = false
 
 [programs.localnet]
 perp_dex = "6FFcqM61UALXUBeXPDQw1J8MLH9r9T5cTsV3uFxQdqLK"
-
-[registry]
-url = "https://api.apr.dev"
 
 [provider]
 cluster = "localnet"

@@ -74,14 +74,13 @@ impl<'info> ProcessOrder<'info> {
             match req {
                 Some(RequestType::Place(order)) => {
                     msg!("RequestQueue: enqueue order_id={}", order.order_id);
-
                     MatchingEngine::process_place_order(self, order)?;
                 }
-                Some(RequestType::Cancel(cancel)) =>{
+                Some(RequestType::Cancel(cancel)) => {
                     msg!("RequestQueue: cancel order_id={}", cancel.order_id);
+                    MatchingEngine::process_cancel_order(self, cancel)?;
                 }
-                
-                None => break, 
+                None => break,
             }
 
             processed += 1;

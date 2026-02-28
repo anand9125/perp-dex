@@ -99,4 +99,12 @@ impl EventQueue {
 
         Ok(ev)
     }
+
+    /// Peek at the head event without removing it. Used to validate event belongs to user before consuming.
+    pub fn peek(&self) -> Result<MatchedOrder> {
+        require!(self.count > 0, PerpError::QueueEmpty);
+        let idx = self.head as usize;
+        let slot = &self.slots[idx];
+        Self::decode_from_slot(slot)
+    }
 }

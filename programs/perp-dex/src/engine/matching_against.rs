@@ -1,14 +1,15 @@
 use anchor_lang::prelude::*;
 use crate::{EventQueue, INNER_NODE, LEAF_NODE, MatchedOrder, MatchingType, Order, OrderType, PerpError, Side, Slab};
 
-pub fn match_against_book<'info>(
+/// Core matching logic: takes a mutable queue and timestamp for testability.
+/// Use `match_against_book` from on-chain code to pass `AccountLoader` and `Clock`.
+pub fn match_against_book_core(
     book: &mut Slab,
     order: &Order,
-    event_queue: &mut AccountLoader<'info, EventQueue>,
+    event_queue: &mut EventQueue,
     match_type: MatchingType,
+    now_secs: i64,
 ) -> Result<(u64, Vec<MatchedOrder>)> {
-    let event_queue = &mut event_queue.load_mut()?;
-
     msg!(
         "MATCH: START side={:?} qty={} order_id={} limit_price={}",
         order.side,
@@ -110,7 +111,6 @@ pub fn match_against_book<'info>(
 
         let fill_qty = remaining_qty.min(available_qty);
         let fill_price = best_price;
-        let now = Clock::get()?.unix_timestamp;
 
         msg!(
             "MATCH FILL: idx={} fill_qty={} fill_price={} avail_before={}",
@@ -120,7 +120,6 @@ pub fn match_against_book<'info>(
             available_qty
         );
 
-        // Maker event (book side)
         let maker_event = MatchedOrder {
             is_maker: true,
             order_id: best_leaf.key,
@@ -131,10 +130,9 @@ pub fn match_against_book<'info>(
                 Side::Buy => Side::Sell,
                 Side::Sell => Side::Buy,
             },
-            timestamp: now,
+            timestamp: now_secs,
         };
 
-        // // Taker event (incoming order)
         let taker_event = MatchedOrder {
             is_maker: false,
             order_id: order.order_id,
@@ -142,7 +140,7 @@ pub fn match_against_book<'info>(
             fill_price,
             fill_qty,
             side: order.side,
-            timestamp: now,
+            timestamp: now_secs,
         };
 
         match match_type {
@@ -158,7 +156,6 @@ pub fn match_against_book<'info>(
             }
         }
 
-        // update remaining taker qty
         remaining_qty -= fill_qty;
         msg!(
             "MATCH LOOP: after fill => remaining_qty={}, available_qty_before={}",
@@ -193,4 +190,16 @@ pub fn match_against_book<'info>(
     );
 
     Ok((remaining_qty, taker_fills))
+}
+
+/// On-chain entrypoint: loads event queue and uses Clock for timestamp.
+pub fn match_against_book<'info>(
+    book: &mut Slab,
+    order: &Order,
+    event_queue: &mut AccountLoader<'info, EventQueue>,
+    match_type: MatchingType,
+) -> Result<(u64, Vec<MatchedOrder>)> {
+    let eq = &mut event_queue.load_mut()?;
+    let now = Clock::get()?.unix_timestamp;
+    match_against_book_core(book, order, eq, match_type, now)
 }

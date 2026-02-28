@@ -13,11 +13,24 @@ use crate::{
 pub struct PositionManager;
 
 impl PositionManager {
+    /// Apply a fill event using current chain time.
     pub fn apply_fill(
         market: &mut MarketState,
         position: &mut Position,
         user_collateral: &mut UserCollateral,
         event: MatchedOrder,
+    ) -> Result<()> {
+        let now_secs = Clock::get()?.unix_timestamp;
+        Self::apply_fill_with_time(market, position, user_collateral, event, now_secs)
+    }
+
+    /// Apply a fill event with explicit timestamp. Used for testing.
+    pub fn apply_fill_with_time(
+        market: &mut MarketState,
+        position: &mut Position,
+        user_collateral: &mut UserCollateral,
+        event: MatchedOrder,
+        now_secs: i64,
     ) -> Result<()> {
         let pos_qty = position.base_position as i64;
 
@@ -35,7 +48,7 @@ impl PositionManager {
             position.entry_price = event.fill_price;
             position.realized_pnl = 0;
             position.last_cum_funding = market.cum_funding;
-            position.updated_at = Clock::get()?.unix_timestamp;
+            position.updated_at = now_secs;
             return Ok(());
         }
 
@@ -89,7 +102,7 @@ impl PositionManager {
             position.entry_price = u64::try_from(new_entry)
                 .map_err(|_| PerpError::MathOverflow)?;
             position.base_position = pos_qty + fill_qty;
-            position.updated_at = Clock::get()?.unix_timestamp;
+            position.updated_at = now_secs;
             return Ok(());
         }
 
@@ -126,11 +139,11 @@ impl PositionManager {
                 .ok_or(PerpError::MathOverflow)?;
 
             position.base_position = pos_qty + fill_qty;
-            position.updated_at = Clock::get()?.unix_timestamp;
+            position.updated_at = now_secs;
             return Ok(());
         }
 
-        //FULL CLOSE 
+        //FULL CLOSE
         if fill_abs == old_abs {
             let price_diff = if pos_qty > 0 {
                 fill_px
@@ -160,11 +173,11 @@ impl PositionManager {
 
             position.base_position = 0;
             position.entry_price = 0;
-            position.updated_at = Clock::get()?.unix_timestamp;
+            position.updated_at = now_secs;
             return Ok(());
         }
 
-        //FLIP (fill_abs > old_abs) 
+        //FLIP (fill_abs > old_abs)
         let closed_qty = old_abs;
         let remainder = fill_abs
             .checked_sub(old_abs)
@@ -206,8 +219,161 @@ impl PositionManager {
         position.base_position = new_side_qty as i64;
         position.entry_price = event.fill_price;
         position.last_cum_funding = market.cum_funding;
-        position.updated_at = Clock::get()?.unix_timestamp;
+        position.updated_at = now_secs;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{OrderStatus, OrderType, Side};
+    use anchor_lang::prelude::Pubkey;
+
+    fn user_pubkey() -> Pubkey {
+        Pubkey::new_from_array([1u8; 32])
+    }
+
+    fn market_pubkey() -> Pubkey {
+        Pubkey::new_from_array([2u8; 32])
+    }
+
+    fn make_position(owner: Pubkey, market: Pubkey, base: i64, entry: u64, last_cum_funding: i64) -> Position {
+        Position {
+            owner,
+            market,
+            order_id: 0,
+            side: Side::Buy,
+            price: 0,
+            qty: 0,
+            order_type: OrderType::Limit,
+            status: OrderStatus::Pending,
+            base_position: base,
+            entry_price: entry,
+            realized_pnl: 0,
+            last_cum_funding,
+            initial_margin: 0,
+            leverage: 0,
+            flags: 0,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn make_market(cum_funding: i64) -> MarketState {
+        MarketState {
+            symbol: "BTC".to_string(),
+            authority: Pubkey::default(),
+            oracle_pubkey: Pubkey::default(),
+            last_oracle_price: 100_000,
+            last_oracle_ts: 0,
+            bid: Pubkey::default(),
+            asks: Pubkey::default(),
+            im_bps: 500,
+            mm_bps: 250,
+            taker_fee_bps: 5,
+            maker_fee_bps: 2,
+            liquidator_share_bps: 50,
+            liq_penalty_bps: 500,
+            oracle_band_bps: 100,
+            cum_funding,
+            last_funding_ts: 0,
+            max_funding_rate: 0,
+            funding_interval_secs: 3600,
+            tick_size: 1,
+            step_size: 1,
+            min_order_notional: 1000,
+            bump: 0,
+        }
+    }
+
+    fn make_collateral(owner: Pubkey, amount: i128) -> UserCollateral {
+        UserCollateral {
+            owner,
+            collateral_amount: amount,
+            last_updated: 0,
+        }
+    }
+
+    fn make_fill_event(side: Side, price: u64, qty: u64, user: [u8; 32]) -> MatchedOrder {
+        MatchedOrder {
+            is_maker: false,
+            order_id: 0,
+            user,
+            fill_price: price,
+            fill_qty: qty,
+            side,
+            timestamp: 1000,
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_open_long() {
+        let user = user_pubkey();
+        let market_pk = market_pubkey();
+        let mut market = make_market(0);
+        let mut position = make_position(user, market_pk, 0, 0, 0);
+        let mut collateral = make_collateral(user, 10_000);
+
+        let ev = make_fill_event(Side::Buy, 100, 10, user.to_bytes());
+        PositionManager::apply_fill_with_time(&mut market, &mut position, &mut collateral, ev, 1000).unwrap();
+
+        assert_eq!(position.base_position, 10);
+        assert_eq!(position.entry_price, 100);
+        assert_eq!(position.realized_pnl, 0);
+        assert_eq!(position.last_cum_funding, 0);
+        assert_eq!(collateral.collateral_amount, 10_000);
+    }
+
+    #[test]
+    fn test_apply_fill_add_to_long() {
+        let user = user_pubkey();
+        let market_pk = market_pubkey();
+        let mut market = make_market(0);
+        let mut position = make_position(user, market_pk, 10, 100, 0);
+        let mut collateral = make_collateral(user, 10_000);
+
+        let ev = make_fill_event(Side::Buy, 120, 5, user.to_bytes());
+        PositionManager::apply_fill_with_time(&mut market, &mut position, &mut collateral, ev, 1000).unwrap();
+
+        assert_eq!(position.base_position, 15);
+        assert_eq!(position.entry_price, 106);
+        assert_eq!(position.realized_pnl, 0);
+        assert_eq!(collateral.collateral_amount, 10_000);
+    }
+
+    #[test]
+    fn test_apply_fill_partial_close_long_profit() {
+        let user = user_pubkey();
+        let market_pk = market_pubkey();
+        let mut market = make_market(0);
+        let mut position = make_position(user, market_pk, 10, 100, 0);
+        let mut collateral = make_collateral(user, 10_000);
+
+        let ev = make_fill_event(Side::Sell, 120, 5, user.to_bytes());
+        PositionManager::apply_fill_with_time(&mut market, &mut position, &mut collateral, ev, 1000).unwrap();
+
+        assert_eq!(position.base_position, 5);
+        assert_eq!(position.entry_price, 100);
+        assert_eq!(position.realized_pnl, 100);
+        assert_eq!(collateral.collateral_amount, 10_100);
+    }
+
+    #[test]
+    fn test_apply_fill_full_close_long() {
+        let user = user_pubkey();
+        let market_pk = market_pubkey();
+        let mut market = make_market(0);
+        let mut position = make_position(user, market_pk, 10, 100, 0);
+        let mut collateral = make_collateral(user, 10_000);
+
+        let ev = make_fill_event(Side::Sell, 120, 10, user.to_bytes());
+        PositionManager::apply_fill_with_time(&mut market, &mut position, &mut collateral, ev, 1000).unwrap();
+
+        assert_eq!(position.base_position, 0);
+        assert_eq!(position.entry_price, 0);
+        assert_eq!(position.realized_pnl, 200);
+        assert_eq!(collateral.collateral_amount, 10_200);
     }
 }

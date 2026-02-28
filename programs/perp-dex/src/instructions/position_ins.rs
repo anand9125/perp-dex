@@ -41,24 +41,40 @@ pub struct PositionIns<'info> {
 }
 
 impl<'info> PositionIns<'info> {
+    /// Process fill events from the global event queue that belong to this user.
+    /// Only consumes events at the head that are for `user_key`; if the head is for another user, returns `EventNotForUser`.
+    /// May process multiple consecutive events for the same user in one call.
     pub fn process(&mut self, user_key: Pubkey) -> Result<()> {
-
         require!(user_key == self.user_position.owner, PerpError::Unauthorized);
-        let fill_event = {
+
+        let mut processed = 0;
+        let max_per_call = 16u16; // cap events per instruction
+
+        loop {
+            if processed >= max_per_call {
+                break;
+            }
             let mut queue = self.event_queue.load_mut()?;
             if queue.count == 0 {
-                return Err(error!(PerpError::QueueEmpty));
+                return Ok(());
             }
-            queue.pop()?
-        };
+            let ev = queue.peek()?;
+            // Only consume events that belong to this user
+            if ev.user != user_key.to_bytes() {
+                return Err(error!(PerpError::EventNotForUser));
+            }
+            let fill_event = queue.pop()?;
+            drop(queue);
 
-        // Security: ensure correct user consuming event
+            PositionManager::apply_fill(
+                &mut self.market,
+                &mut self.user_position,
+                &mut self.user_collateral,
+                fill_event,
+            )?;
+            processed += 1;
+        }
 
-        PositionManager::apply_fill(
-            &mut self.market,
-            &mut self.user_position,
-            &mut self.user_collateral,
-            fill_event,
-        )
+        Ok(())
     }
 }

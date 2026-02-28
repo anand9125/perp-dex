@@ -54,6 +54,8 @@ pub enum PerpError {
     DeserializationFailed   ,
     #[msg("Unauthorized")]
     Unauthorized,
+    #[msg("Event at head of queue is for another user")]
+    EventNotForUser,
     #[msg("InvalidVaultQuoteMint ")]
     InvalidVaultQuoteMint 
 }
