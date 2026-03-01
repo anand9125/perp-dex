@@ -1,3 +1,4 @@
+import '@/lib/solana/shim';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -7,6 +8,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { colors } from '@/constants/Theme';
+import { WalletProvider } from '@/lib/solana/WalletContext';
 
 export {
   ErrorBoundary,
@@ -51,8 +53,9 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={PerpTheme}>
-      <StatusBar style="light" />
-      <Stack
+      <WalletProvider>
+        <StatusBar style="light" />
+        <Stack
         screenOptions={{
           contentStyle: { backgroundColor: colors.background },
           headerStyle: { backgroundColor: colors.surface },
@@ -62,6 +65,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
+      </WalletProvider>
     </ThemeProvider>
   );
 }

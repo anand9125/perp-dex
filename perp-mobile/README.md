@@ -19,7 +19,19 @@ Mobile UI for the Perp DEX perpetual futures protocol. Connect your wallet and t
 | **Trade**  | Order book + place order (Long/Short, size, limit)|
 | **Positions** | Open positions with PnL                        |
 
-Wallet connection is **UI-only** for now; you can hook up Solana wallet adapters (e.g. `@solana/wallet-adapter-react-native`) later.
+Wallet connection is wired to **Solana** via a small backend and the perp-dex program IDL. To use live chain data and place orders:
+
+1. **Start the backend** (from repo root):
+   ```bash
+   cd backend && npm install && npm run build
+   RPC_URL=https://api.devnet.solana.com npm start
+   ```
+2. **Point the app at the API** – On device/emulator, use your machine’s IP instead of localhost, e.g. create `.env` with:
+   ```
+   EXPO_PUBLIC_API_URL=http://192.168.1.32:3001
+   EXPO_PUBLIC_RPC_URL=https://api.devnet.solana.com
+   ```
+3. **Wallet** – The app uses a mock pubkey for “Connect wallet” until you integrate a real wallet (e.g. Phantom deep link or WalletConnect). Placing an order requires a wallet that can sign transactions; the context accepts a `signTransaction` callback when you plug in an adapter.
 
 ## Run
 
@@ -45,6 +57,11 @@ app/
     markets.tsx  # Markets list
     trade.tsx    # Trade view + order form
     positions.tsx # Open positions
+lib/
+  solana/        # Program client, PDAs, wallet context, API client
+  idl/           # perp_dex.json (from target/idl)
+hooks/
+  usePerpDex.ts  # useApiMarkets, useApiUser, usePlaceOrder
 components/
   WalletButton.tsx
   MarketCard.tsx

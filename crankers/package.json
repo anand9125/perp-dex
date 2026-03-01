@@ -1,0 +1,20 @@
+{
+  "name": "perp-dex-crankers",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "request": "node dist/request-cranker.js",
+    "event": "node dist/event-cranker.js",
+    "liquidator": "node dist/liquidator.js"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.3.0"
+  }
+}

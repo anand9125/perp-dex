@@ -1,62 +1,132 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { OrderForm } from '@/components/OrderForm';
+import { getMarketBySymbol, mockOrderBook } from '@/constants/mockData';
+import { OrderForm, type Side } from '@/components/OrderForm';
+import { OrderBookDepth } from '@/components/OrderBookDepth';
+import { StickyBuySell } from '@/components/StickyBuySell';
+import { useWallet } from '@/lib/solana/WalletContext';
+import { useApiUser, usePlaceOrder } from '@/hooks/usePerpDex';
 import { colors, spacing, typography } from '@/constants/Theme';
 
+type BottomTab = 'orders' | 'holdings';
+
 export default function TradeScreen() {
-  const { symbol } = useLocalSearchParams<{ symbol?: string }>();
+  const { symbol, side } = useLocalSearchParams<{ symbol?: string; side?: string }>();
   const marketSymbol = symbol || 'SOL-PERP';
-  const markPrice = '245.32';
+  const initialSide: Side = side === 'short' ? 'short' : 'long';
+  const market = useMemo(() => getMarketBySymbol(marketSymbol), [marketSymbol]);
+  const orderBook = useMemo(
+    () => mockOrderBook(market.symbol, parseFloat(market.price)),
+    [market.symbol, market.price]
+  );
+  const [bottomTab, setBottomTab] = useState<BottomTab>('orders');
+  const { width } = useWindowDimensions();
+  const narrow = width < 400;
+
+  const { publicKey } = useWallet();
+  const { collateral, positions } = useApiUser(publicKey);
+  const { placeOrder, loading: orderLoading, error: orderError } = usePlaceOrder();
+
+  const isPositive = market.change24h >= 0;
+  const balanceUsdc = collateral?.collateralAmount
+    ? (Number(collateral.collateralAmount) / 1e6).toFixed(2)
+    : '0.00';
+
+  const handlePlaceOrder = async (s: Side, size: string, limitPrice: string) => {
+    if (!publicKey) {
+      Alert.alert('Connect wallet', 'Connect a wallet to place orders.');
+      return;
+    }
+    try {
+      const sig = await placeOrder({
+        user: publicKey,
+        marketSymbol,
+        side: s === 'long' ? 'buy' : 'sell',
+        qty: parseFloat(size) || 0,
+        limitPrice: Math.round(parseFloat(limitPrice) || 0),
+      });
+      Alert.alert('Order placed', `Signature: ${sig.slice(0, 16)}…`);
+    } catch (e: any) {
+      Alert.alert('Order failed', e?.message ?? 'Unknown error');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>{marketSymbol}</Text>
-        <View style={styles.priceRow}>
-          <Text style={styles.markPrice}>${markPrice}</Text>
-          <Text style={styles.changePositive}>+2.45%</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.pair}>{market.base}/{market.quote}</Text>
+          <Text style={[styles.change, isPositive ? styles.changeLong : styles.changeShort]}>
+            {isPositive ? '+' : ''}{market.change24h.toFixed(2)}%
+          </Text>
         </View>
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Order book placeholder */}
-        <View style={styles.orderBook}>
-          <Text style={styles.orderBookTitle}>Order book</Text>
-          <View style={styles.orderBookRow}>
-            <Text style={styles.askPrice}>245.20</Text>
-            <Text style={styles.askSize}>12.5</Text>
+        <View style={[styles.mainRow, narrow && styles.mainCol]}>
+          <View style={styles.formCol}>
+            <OrderForm
+              marketSymbol={market.symbol}
+              baseAsset={market.base}
+              quoteAsset={market.quote}
+              markPrice={market.price}
+              initialSide={initialSide}
+              onPlaceOrder={handlePlaceOrder}
+            />
           </View>
-          <View style={styles.orderBookRow}>
-            <Text style={styles.askPrice}>245.10</Text>
-            <Text style={styles.askSize}>8.2</Text>
-          </View>
-          <View style={[styles.orderBookRow, styles.midRow]}>
-            <Text style={styles.midPrice}>245.00 — Spread 0.02</Text>
-          </View>
-          <View style={styles.orderBookRow}>
-            <Text style={styles.bidPrice}>244.90</Text>
-            <Text style={styles.bidSize}>15.1</Text>
-          </View>
-          <View style={styles.orderBookRow}>
-            <Text style={styles.bidPrice}>244.80</Text>
-            <Text style={styles.bidSize}>22.3</Text>
+          <View style={styles.bookCol}>
+            <OrderBookDepth
+              orderBook={orderBook}
+              quoteAsset={market.quote}
+              baseAsset={market.base}
+              maxRows={5}
+            />
           </View>
         </View>
 
-        <OrderForm
-          marketSymbol={marketSymbol}
-          markPrice={markPrice}
-          onPlaceOrder={(side, size, limitPrice) => {
-            console.log('Place order', side, size, limitPrice);
-          }}
-        />
+        <View style={styles.bottomTabs}>
+          <Text
+            onPress={() => setBottomTab('orders')}
+            style={[styles.bottomTab, bottomTab === 'orders' && styles.bottomTabActive]}
+          >
+            Open Orders (0)
+          </Text>
+          <Text
+            onPress={() => setBottomTab('holdings')}
+            style={[styles.bottomTab, bottomTab === 'holdings' && styles.bottomTabActive]}
+          >
+            Holdings (0)
+          </Text>
+        </View>
+
+        {bottomTab === 'orders' && (
+          <View style={styles.emptySection}>
+            <Text style={styles.emptyTitle}>No open orders</Text>
+            <Text style={styles.emptyText}>Your limit and market orders will appear here.</Text>
+          </View>
+        )}
+        {bottomTab === 'holdings' && (
+          <View style={styles.emptySection}>
+            <Text style={styles.emptyTitle}>No holdings</Text>
+            <Text style={styles.emptyText}>Positions will show here once you have open positions.</Text>
+          </View>
+        )}
+
+        <View style={styles.fundsNotice}>
+          <Text style={styles.fundsText}>Available Funds: {balanceUsdc} {market.quote}</Text>
+          <Text style={styles.fundsHint}>
+            {!publicKey ? 'Connect wallet to trade' : 'Transfer funds to your Spot wallet to trade'}
+          </Text>
+        </View>
       </ScrollView>
+
+      <StickyBuySell symbol={market.symbol} />
     </SafeAreaView>
   );
 }
@@ -68,81 +138,98 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  title: {
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pair: {
     ...typography.title2,
     color: colors.text,
   },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-    marginTop: 4,
-  },
-  markPrice: {
-    ...typography.headline,
-    color: colors.text,
-  },
-  changePositive: {
-    ...typography.caption,
-    color: colors.long,
+  change: {
+    ...typography.callout,
     fontWeight: '600',
   },
+  changeLong: { color: colors.long },
+  changeShort: { color: colors.short },
   scroll: {
     flex: 1,
   },
-  content: {
-    padding: spacing.xl,
-    paddingBottom: spacing.xxl,
-    gap: spacing.xl,
-  },
-  orderBook: {
-    backgroundColor: colors.card,
-    borderRadius: 14,
+  scrollContent: {
     padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    paddingBottom: 100,
   },
-  orderBookTitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  mainRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  mainCol: {
+    flexDirection: 'column',
+  },
+  formCol: {
+    flex: 1,
+    minWidth: 160,
+  },
+  bookCol: {
+    flex: 1,
+    minWidth: 160,
+  },
+  bottomTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     marginBottom: spacing.md,
   },
-  orderBookRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
+  bottomTab: {
+    ...typography.callout,
+    color: colors.textSecondary,
+    marginRight: spacing.xl,
+    paddingVertical: spacing.sm,
   },
-  midRow: {
-    justifyContent: 'center',
-    marginVertical: 4,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+  bottomTabActive: {
+    color: colors.accent,
+    fontWeight: '600',
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
+  },
+  emptySection: {
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.lg,
   },
-  askPrice: {
-    ...typography.callout,
-    color: colors.short,
-  },
-  askSize: {
+  emptyTitle: {
     ...typography.callout,
     color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
-  bidPrice: {
-    ...typography.callout,
-    color: colors.long,
-  },
-  bidSize: {
-    ...typography.callout,
-    color: colors.textSecondary,
-  },
-  midPrice: {
+  emptyText: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  fundsNotice: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  fundsText: {
+    ...typography.caption,
+    color: colors.text,
+  },
+  fundsHint: {
+    ...typography.caption2,
+    color: colors.textMuted,
+    marginTop: 4,
   },
 });
