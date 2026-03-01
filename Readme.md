@@ -175,6 +175,16 @@ Built for on-chain performance:
 - **Compute-Optimized**: Batched operations to maximize compute units
 - **Account Layout**: Strategic use of PDAs for deterministic addressing
 
+## 📱 Mobile app
+
+A **React Native (Expo)** mobile client lets you trade from your phone with the same on-chain order book and positions as the rest of the stack.
+
+![Trade screen](docs/screenshots/trade-screen.png)
+
+The app connects to the backend WebSocket (`/ws`), receives live **markets**, **order books**, **request/event queue counts**, and **user collateral and positions**. You see the same order book as on-chain; placing an order goes through the backend relay and is processed by the request cranker. See **[perp-mobile/README.md](perp-mobile/README.md)** for screenshots, architecture, and how everything works (IndexerContext, screens, order flow, theming).
+
+---
+
 ## 📁 Project Structure
 
 ```
