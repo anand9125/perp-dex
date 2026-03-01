@@ -14,6 +14,7 @@ npm run build
 
 - **RPC_URL** – Solana RPC (default: `https://api.devnet.solana.com`)
 - **PORT** – API port (default: `3001`)
+- **INDEXER_POLL_MS** – Indexer poll interval in ms (default: `2500`)
 
 ## Run
 
@@ -35,6 +36,17 @@ RPC_URL=http://127.0.0.1:8899 npm start
 | GET | `/api/markets` | List all `MarketState` accounts |
 | GET | `/api/user/:pubkey` | User collateral + positions |
 | POST | `/api/relay` | Body: `{ "transaction": "<base64 signed tx>" }` |
+
+## WebSocket indexer (`/ws`)
+
+Real-time state for the mobile app. Connect to `ws://localhost:3001/ws` (or `wss://` when using HTTPS).
+
+- **Server → client:** `{ "type": "state", "payload": { markets, requestQueueCount, eventQueueCount, users } }`  
+  Sent on connect and whenever chain state changes (polled every `INDEXER_POLL_MS`).
+- **Client → server:** `{ "type": "subscribe_user", "pubkey": "<base58>" }`  
+  Subscribes a wallet so its collateral and positions are included in `payload.users` on each update.
+
+The mobile app uses this to show live markets, balance, positions, and queue status (e.g. “Processing orders…”).
 
 ## IDL
 

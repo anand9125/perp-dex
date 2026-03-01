@@ -3,7 +3,7 @@
  * If health < 0, calls liquidate instruction.
  * Run: RPC_URL=... LIQUIDATOR_KEYPAIR=... node dist/liquidator.js
  */
-import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
   connection,
@@ -81,12 +81,28 @@ async function main() {
 
   for (;;) {
     try {
-      const positions = await connection.getProgramAccounts(PROGRAM_ID, {
-        commitment: 'confirmed',
-        filters: [
-          { memcmp: { offset: 0, bytes: POSITION_DISCRIMINATOR.toString('base64') } },
-        ],
-      });
+      let positions: Awaited<ReturnType<Connection['getProgramAccounts']>>;
+      try {
+        positions = await connection.getProgramAccounts(PROGRAM_ID, {
+          commitment: 'confirmed',
+          filters: [
+            { memcmp: { offset: 0, bytes: POSITION_DISCRIMINATOR.toString('base64') } },
+          ],
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('Base58') || msg.includes('Invalid')) {
+          const all = await connection.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed' });
+          const posDisc = Buffer.from(POSITION_DISCRIMINATOR);
+          positions = all.filter(
+            (a) =>
+              a.account.data.length >= 8 &&
+              posDisc.equals(Buffer.from(a.account.data.subarray(0, 8)))
+          );
+        } else {
+          throw e;
+        }
+      }
 
       const markets = await getAllMarkets();
       const marketByPk = new Map(markets.map((m) => [m.publicKey.toBase58(), m]));

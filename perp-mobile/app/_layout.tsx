@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 
 import { colors } from '@/constants/Theme';
 import { WalletProvider } from '@/lib/solana/WalletContext';
+import { IndexerProvider } from '@/lib/solana/IndexerContext';
 
 export {
   ErrorBoundary,
@@ -54,6 +55,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={PerpTheme}>
       <WalletProvider>
+        <IndexerProvider>
         <StatusBar style="light" />
         <Stack
         screenOptions={{
@@ -65,6 +67,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
+        </IndexerProvider>
       </WalletProvider>
     </ThemeProvider>
   );

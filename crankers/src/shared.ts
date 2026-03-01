@@ -147,12 +147,27 @@ export interface MarketInfo {
 }
 
 export async function getAllMarkets(): Promise<MarketInfo[]> {
-  const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-    commitment: 'confirmed',
-    filters: [
-      { memcmp: { offset: 0, bytes: MARKET_DISCRIMINATOR.toString('base64') } },
-    ],
-  });
+  let accounts: Awaited<ReturnType<Connection['getProgramAccounts']>>;
+  try {
+    accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+      commitment: 'confirmed',
+      filters: [
+        { memcmp: { offset: 0, bytes: MARKET_DISCRIMINATOR.toString('base64') } },
+      ],
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('Base58') || msg.includes('Invalid')) {
+      const all = await connection.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed' });
+      accounts = all.filter(
+        (a) =>
+          a.account.data.length >= 8 &&
+          MARKET_DISCRIMINATOR.equals(Buffer.from(a.account.data.subarray(0, 8)))
+      );
+    } else {
+      throw e;
+    }
+  }
   const coder = program.coder as any;
   const out: MarketInfo[] = [];
   for (const { pubkey, account } of accounts) {

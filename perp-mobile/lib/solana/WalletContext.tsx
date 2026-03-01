@@ -31,10 +31,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setSignTransaction(null);
   }, []);
 
-  const disconnect = useCallback(() => {
-    setPublicKey(null);
-  }, []);
-
   return (
     <WalletContext.Provider
       value={{

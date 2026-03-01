@@ -1,12 +1,25 @@
 /**
- * Perp DEX Backend – exposes chain data for the mobile app.
+ * Perp DEX Backend – REST API + WebSocket indexer for real-time UI state.
  * Run: RPC_URL=https://api.devnet.solana.com node dist/index.js
  */
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
 import { createRequire } from 'module';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
+import {
+  fetchMarkets,
+  fetchUser,
+  fetchOrderBook,
+  getRequestQueueCount,
+  getEventQueueCount,
+  type ApiMarket,
+  type ApiUserCollateral,
+  type ApiPosition,
+  type ApiOrderBook,
+} from './fetchState.js';
 
 const require = createRequire(import.meta.url);
 const idl = require('../idl.json');
@@ -14,24 +27,17 @@ const idl = require('../idl.json');
 const PROGRAM_ID = new PublicKey(idl.address);
 const RPC_URL = process.env.RPC_URL || 'https://api.devnet.solana.com';
 const PORT = Number(process.env.PORT) || 3001;
+const INDEXER_POLL_MS = Number(process.env.INDEXER_POLL_MS) || 10000;
 
 const connection = new Connection(RPC_URL);
-// Provider without wallet (read-only); wallet needed only for relay.
 const provider = new AnchorProvider(connection, {} as any, { commitment: 'confirmed' });
 const program = new Program(idl as Idl, provider);
-
-// Account discriminators from IDL (first 8 bytes of account data)
-const DISCRIMINATORS = {
-  MarketState: Buffer.from([0, 125, 123, 215, 95, 96, 164, 194]),
-  UserCollateral: Buffer.from([105, 117, 183, 100, 173, 169, 109, 65]),
-  Position: Buffer.from([170, 188, 143, 228, 122, 64, 247, 208]),
-};
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-/** GET /api/config – program id and RPC URL (client may use its own RPC) */
+/** GET /api/config */
 app.get('/api/config', (_req, res) => {
   res.json({
     programId: PROGRAM_ID.toBase58(),
@@ -39,45 +45,10 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
-/** GET /api/markets – all market accounts from chain */
+/** GET /api/markets */
 app.get('/api/markets', async (_req, res) => {
   try {
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      commitment: 'confirmed',
-      filters: [
-        {
-          memcmp: {
-            offset: 0,
-            bytes: DISCRIMINATORS.MarketState.toString('base64'),
-          },
-        },
-      ],
-    });
-
-    const coder = program.coder as any;
-    const markets = accounts.map(({ pubkey, account }) => {
-      try {
-        const decoded = coder.accounts.decode('marketState', account.data);
-        const symbol = decoded.symbol?.replace(/\0/g, '') || pubkey.toBase58().slice(0, 8);
-        return {
-          publicKey: pubkey.toBase58(),
-          symbol,
-          authority: decoded.authority?.toBase58(),
-          lastOraclePrice: decoded.lastOraclePrice != null ? Number(decoded.lastOraclePrice) : 0,
-          lastOracleTs: decoded.lastOracleTs != null ? Number(decoded.lastOracleTs) : 0,
-          bid: decoded.bid?.toBase58(),
-          asks: decoded.asks?.toBase58(),
-          imBps: decoded.imBps ?? 0,
-          mmBps: decoded.mmBps ?? 0,
-          tickSize: decoded.tickSize ?? 0,
-          stepSize: decoded.stepSize ?? 0,
-          minOrderNotional: decoded.minOrderNotional != null ? Number(decoded.minOrderNotional) : 0,
-        };
-      } catch (e) {
-        return null;
-      }
-    }).filter(Boolean);
-
+    const markets = await fetchMarkets(connection, program);
     res.json({ markets });
   } catch (e: any) {
     console.error('GET /api/markets', e);
@@ -85,62 +56,19 @@ app.get('/api/markets', async (_req, res) => {
   }
 });
 
-/** GET /api/user/:pubkey – user collateral and positions */
+/** GET /api/user/:pubkey */
 app.get('/api/user/:pubkey', async (req, res) => {
   const userPubkey = req.params.pubkey;
   if (!userPubkey) {
     return res.status(400).json({ error: 'Missing pubkey' });
   }
   try {
-    const pubkey = new PublicKey(userPubkey);
-
-    const [collateralPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('user_colletral'), pubkey.toBuffer()],
-      PROGRAM_ID
+    const { collateral, positions } = await fetchUser(
+      connection,
+      program,
+      PROGRAM_ID,
+      userPubkey
     );
-
-    const collateralAccount = await connection.getAccountInfo(collateralPda);
-    let collateral = null;
-    if (collateralAccount?.data) {
-      const coder = program.coder as any;
-      try {
-        const decoded = coder.accounts.decode('userCollateral', collateralAccount.data);
-        collateral = {
-          owner: decoded.owner?.toBase58(),
-          collateralAmount: decoded.collateralAmount != null ? decoded.collateralAmount.toString() : '0',
-          lastUpdated: decoded.lastUpdated != null ? Number(decoded.lastUpdated) : 0,
-        };
-      } catch (_) {}
-    }
-
-    const positionsAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      commitment: 'confirmed',
-      filters: [
-        { memcmp: { offset: 0, bytes: DISCRIMINATORS.Position.toString('base64') } },
-        { memcmp: { offset: 8, bytes: pubkey.toBase58() } },
-      ],
-    });
-
-    const coder = program.coder as any;
-    const positions = positionsAccounts.map(({ pubkey: posPubkey, account }) => {
-      try {
-        const decoded = coder.accounts.decode('position', account.data);
-        return {
-          publicKey: posPubkey.toBase58(),
-          owner: decoded.owner?.toBase58(),
-          market: decoded.market?.toBase58(),
-          side: decoded.side,
-          basePosition: decoded.basePosition != null ? Number(decoded.basePosition) : 0,
-          entryPrice: decoded.entryPrice != null ? Number(decoded.entryPrice) : 0,
-          realizedPnl: decoded.realizedPnl != null ? Number(decoded.realizedPnl) : 0,
-          qty: decoded.qty != null ? Number(decoded.qty) : 0,
-          status: decoded.status,
-        };
-      } catch (_) {
-        return null;
-      }
-    }).filter(Boolean);
-
     res.json({ collateral, positions });
   } catch (e: any) {
     console.error('GET /api/user/:pubkey', e);
@@ -148,7 +76,31 @@ app.get('/api/user/:pubkey', async (req, res) => {
   }
 });
 
-/** POST /api/relay – submit a serialized signed transaction (base64) */
+/** GET /api/orderbook/:symbol – live order book for a market */
+app.get('/api/orderbook/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  if (!symbol) return res.status(400).json({ error: 'Missing symbol' });
+  try {
+    const markets = await fetchMarkets(connection, program);
+    const market = markets.find((m) => m.symbol === symbol);
+    if (!market?.bid || !market?.asks) {
+      return res.status(404).json({ error: 'Market or order book not found' });
+    }
+    const orderBook = await fetchOrderBook(
+      connection,
+      PROGRAM_ID,
+      symbol,
+      new PublicKey(market.bid),
+      new PublicKey(market.asks)
+    );
+    res.json(orderBook);
+  } catch (e: any) {
+    console.error('GET /api/orderbook/:symbol', e);
+    res.status(500).json({ error: e?.message || 'Failed to fetch order book' });
+  }
+});
+
+/** POST /api/relay */
 app.post('/api/relay', async (req, res) => {
   const { transaction: txBase64 } = req.body;
   if (!txBase64 || typeof txBase64 !== 'string') {
@@ -164,6 +116,130 @@ app.post('/api/relay', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// --- WebSocket indexer ---
+export type IndexerState = {
+  markets: ApiMarket[];
+  requestQueueCount: number;
+  eventQueueCount: number;
+  users: Record<string, { collateral: ApiUserCollateral | null; positions: ApiPosition[] }>;
+  orderBooks: Record<string, ApiOrderBook>;
+};
+
+const subscribedPubkeys = new Set<string>();
+let lastState: IndexerState = {
+  markets: [],
+  requestQueueCount: 0,
+  eventQueueCount: 0,
+  users: {},
+  orderBooks: {},
+};
+let last429Log = 0;
+
+function stateKey(s: IndexerState): string {
+  return JSON.stringify({
+    requestQueueCount: s.requestQueueCount,
+    eventQueueCount: s.eventQueueCount,
+    marketsLen: s.markets.length,
+    markets: s.markets.map((m) => m.symbol + m.lastOraclePrice),
+    users: Object.keys(s.users).sort().map((pk) => pk + JSON.stringify(s.users[pk])),
+    orderBooks: Object.keys(s.orderBooks).sort().map((sym) => sym + JSON.stringify(s.orderBooks[sym])),
+  });
+}
+
+async function tick(): Promise<boolean> {
+  try {
+    const [markets, requestQueueCount, eventQueueCount] = await Promise.all([
+      fetchMarkets(connection, program),
+      getRequestQueueCount(connection, PROGRAM_ID),
+      getEventQueueCount(connection, PROGRAM_ID),
+    ]);
+    const orderBooks: Record<string, ApiOrderBook> = {};
+    await Promise.all(
+      markets.map(async (m) => {
+        if (m.bid && m.asks) {
+          const book = await fetchOrderBook(
+            connection,
+            PROGRAM_ID,
+            m.symbol,
+            new PublicKey(m.bid),
+            new PublicKey(m.asks)
+          );
+          orderBooks[m.symbol] = book;
+        }
+      })
+    );
+    const users: IndexerState['users'] = {};
+    const toFetch = Array.from(subscribedPubkeys).slice(0, 50);
+    await Promise.all(
+      toFetch.map(async (pubkey) => {
+        const { collateral, positions } = await fetchUser(
+          connection,
+          program,
+          PROGRAM_ID,
+          pubkey
+        );
+        users[pubkey] = { collateral, positions };
+      })
+    );
+    const next: IndexerState = {
+      markets,
+      requestQueueCount,
+      eventQueueCount,
+      users,
+      orderBooks,
+    };
+    if (stateKey(next) !== stateKey(lastState)) {
+      lastState = next;
+      const payload = JSON.stringify({ type: 'state', payload: next });
+      wss.clients.forEach((client) => {
+        if (client.readyState === 1) client.send(payload);
+      });
+    }
+    return false;
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    if (msg.includes('429') || msg.includes('Too Many Requests')) {
+      if (Date.now() - last429Log > 60_000) {
+        console.warn('Indexer: RPC rate limit (429). Increase INDEXER_POLL_MS or use a dedicated RPC.');
+        last429Log = Date.now();
+      }
+      return true; // signal backoff
+    } else {
+      console.error('Indexer tick:', msg);
+      return false;
+    }
+  }
+  return false;
+}
+
+function scheduleNext(backoff: boolean): void {
+  const delay = backoff ? Math.min(INDEXER_POLL_MS * 2, 60_000) : INDEXER_POLL_MS;
+  setTimeout(() => {
+    tick().then(scheduleNext);
+  }, delay);
+}
+
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+wss.on('connection', (ws) => {
+  ws.send(JSON.stringify({ type: 'state', payload: lastState }));
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'subscribe_user' && typeof msg.pubkey === 'string') {
+        subscribedPubkeys.add(msg.pubkey);
+      }
+      if (msg.type === 'unsubscribe_user' && typeof msg.pubkey === 'string') {
+        subscribedPubkeys.delete(msg.pubkey);
+      }
+    } catch {}
+  });
+});
+
+scheduleNext(false);
+
+httpServer.listen(PORT, () => {
   console.log(`Perp DEX API http://localhost:${PORT} (RPC: ${RPC_URL})`);
+  console.log(`WebSocket indexer ws://localhost:${PORT}/ws (poll ${INDEXER_POLL_MS}ms)`);
 });

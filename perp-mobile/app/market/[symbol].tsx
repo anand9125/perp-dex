@@ -7,6 +7,7 @@ import { getMarketBySymbol, mockOrderBook } from '@/constants/mockData';
 import { ChartPlaceholder } from '@/components/ChartPlaceholder';
 import { OrderBookDepth } from '@/components/OrderBookDepth';
 import { StickyBuySell } from '@/components/StickyBuySell';
+import { useIndexer } from '@/lib/solana/IndexerContext';
 import { colors, spacing, typography } from '@/constants/Theme';
 
 type Tab = 'price' | 'orderbook';
@@ -14,13 +15,16 @@ type Tab = 'price' | 'orderbook';
 export default function MarketDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
+  const { state } = useIndexer();
   const market = useMemo(() => getMarketBySymbol(symbol || 'SOL-PERP'), [symbol]);
+  const liveOrderBook = state?.orderBooks?.[symbol || 'SOL-PERP'];
+  const orderBook = useMemo(() => {
+    if (liveOrderBook && (liveOrderBook.bids.length > 0 || liveOrderBook.asks.length > 0)) {
+      return liveOrderBook as { bids: { price: string; size: string }[]; asks: { price: string; size: string }[]; midPrice?: string; bidPct?: number; askPct?: number };
+    }
+    return mockOrderBook(market.symbol, parseFloat(market.price));
+  }, [liveOrderBook, market.symbol, market.price]);
   const [activeTab, setActiveTab] = React.useState<Tab>('price');
-
-  const orderBook = useMemo(
-    () => mockOrderBook(market.symbol, parseFloat(market.price)),
-    [market.symbol, market.price]
-  );
 
   if (!market) return null;
 

@@ -25,3 +25,17 @@ export function getApiUrl(): string {
   }
   return DEFAULT_API_URL;
 }
+
+/** WebSocket URL for real-time indexer (same host as API, path /ws) */
+export function getWsUrl(): string {
+  if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_WS_URL) {
+    return process.env.EXPO_PUBLIC_WS_URL;
+  }
+  if (typeof process !== 'undefined' && process.env?.REACT_APP_WS_URL) {
+    return process.env.REACT_APP_WS_URL;
+  }
+  const api = getApiUrl();
+  if (api.startsWith('https://')) return api.replace('https://', 'wss://') + '/ws';
+  if (api.startsWith('http://')) return api.replace('http://', 'ws://') + '/ws';
+  return 'ws://localhost:3001/ws';
+}

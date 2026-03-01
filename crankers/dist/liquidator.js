@@ -51,12 +51,27 @@ async function main() {
     console.log('Liquidator started.');
     for (;;) {
         try {
-            const positions = await connection.getProgramAccounts(PROGRAM_ID, {
-                commitment: 'confirmed',
-                filters: [
-                    { memcmp: { offset: 0, bytes: POSITION_DISCRIMINATOR.toString('base64') } },
-                ],
-            });
+            let positions;
+            try {
+                positions = await connection.getProgramAccounts(PROGRAM_ID, {
+                    commitment: 'confirmed',
+                    filters: [
+                        { memcmp: { offset: 0, bytes: POSITION_DISCRIMINATOR.toString('base64') } },
+                    ],
+                });
+            }
+            catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                if (msg.includes('Base58') || msg.includes('Invalid')) {
+                    const all = await connection.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed' });
+                    const posDisc = Buffer.from(POSITION_DISCRIMINATOR);
+                    positions = all.filter((a) => a.account.data.length >= 8 &&
+                        posDisc.equals(Buffer.from(a.account.data.subarray(0, 8))));
+                }
+                else {
+                    throw e;
+                }
+            }
             const markets = await getAllMarkets();
             const marketByPk = new Map(markets.map((m) => [m.publicKey.toBase58(), m]));
             for (const { pubkey: positionPk, account } of positions) {

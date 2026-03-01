@@ -11,6 +11,7 @@ type OrderFormProps = {
   markPrice: string;
   initialSide?: Side;
   onPlaceOrder?: (side: Side, size: string, limitPrice: string) => void;
+  availableBalance?: string;
 };
 
 export function OrderForm({
@@ -20,6 +21,7 @@ export function OrderForm({
   markPrice,
   initialSide = 'long',
   onPlaceOrder,
+  availableBalance = '0',
 }: OrderFormProps) {
   const [side, setSide] = useState<Side>(initialSide);
   const [size, setSize] = useState('');
@@ -124,7 +126,7 @@ export function OrderForm({
 
       <View style={styles.accountRow}>
         <Text style={styles.accountLabel}>Avbl</Text>
-        <Text style={styles.accountValue}>0 {quoteAsset}</Text>
+        <Text style={styles.accountValue}>{availableBalance} {quoteAsset}</Text>
       </View>
       <View style={styles.accountRow}>
         <Text style={styles.accountLabel}>Max {side === 'long' ? 'Buy' : 'Sell'}</Text>

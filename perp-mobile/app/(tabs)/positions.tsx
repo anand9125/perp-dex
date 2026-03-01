@@ -1,33 +1,53 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PositionCard, type PositionItem } from '@/components/PositionCard';
+import { useWallet } from '@/lib/solana/WalletContext';
+import { useIndexerUser, useIndexerMarkets } from '@/lib/solana/IndexerContext';
 import { colors, spacing, typography } from '@/constants/Theme';
 
-const MOCK_POSITIONS: PositionItem[] = [
-  {
-    symbol: 'SOL-PERP',
-    side: 'long',
-    size: '4.0',
-    entryPrice: '240.00',
-    markPrice: '245.32',
-    pnl: 21.28,
-    pnlPercent: 2.22,
-  },
-  {
-    symbol: 'SOL-PERP',
-    side: 'short',
-    size: '2.0',
-    entryPrice: '248.00',
-    markPrice: '245.32',
-    pnl: 5.36,
-    pnlPercent: 1.08,
-  },
-];
-
 export default function PositionsScreen() {
-  const hasPositions = MOCK_POSITIONS.length > 0;
-  const totalPnl = MOCK_POSITIONS.reduce((s, p) => s + p.pnl, 0);
+  const { publicKey } = useWallet();
+  const { positions } = useIndexerUser(publicKey);
+  const indexerMarkets = useIndexerMarkets();
+
+  const marketSymbolByPk = useMemo(() => {
+    const m: Record<string, string> = {};
+    indexerMarkets.forEach((market) => {
+      m[market.publicKey] = market.symbol;
+    });
+    return m;
+  }, [indexerMarkets]);
+
+  const positionItems: PositionItem[] = useMemo(
+    () =>
+      positions
+        .filter((p) => p.basePosition !== 0)
+        .map((p) => {
+          const symbol = marketSymbolByPk[p.market] ?? 'PERP';
+          const markPrice = indexerMarkets.find((m) => m.publicKey === p.market)?.lastOraclePrice ?? p.entryPrice;
+          const entryPrice = p.entryPrice;
+          const size = Math.abs(p.basePosition);
+          const isLong = p.basePosition > 0;
+          const pnl = isLong
+            ? (markPrice - entryPrice) * size
+            : (entryPrice - markPrice) * size;
+          const pnlPercent = entryPrice > 0 ? (pnl / (entryPrice * size)) * 100 : 0;
+          return {
+            symbol: symbol,
+            side: isLong ? 'long' : 'short',
+            size: size.toFixed(2),
+            entryPrice: entryPrice.toFixed(2),
+            markPrice: String(markPrice),
+            pnl,
+            pnlPercent,
+          };
+        }),
+    [positions, marketSymbolByPk, indexerMarkets]
+  );
+
+  const hasPositions = positionItems.length > 0;
+  const totalPnl = positionItems.reduce((s, p) => s + p.pnl, 0);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -54,7 +74,7 @@ export default function PositionsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {hasPositions ? (
-          MOCK_POSITIONS.map((pos, i) => (
+          positionItems.map((pos, i) => (
             <PositionCard key={`${pos.symbol}-${pos.side}-${i}`} position={pos} />
           ))
         ) : (

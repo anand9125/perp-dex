@@ -105,12 +105,26 @@ export function userCollateralPda(userPk) {
 }
 const MARKET_DISCRIMINATOR = Buffer.from([0, 125, 123, 215, 95, 96, 164, 194]);
 export async function getAllMarkets() {
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-        commitment: 'confirmed',
-        filters: [
-            { memcmp: { offset: 0, bytes: MARKET_DISCRIMINATOR.toString('base64') } },
-        ],
-    });
+    let accounts;
+    try {
+        accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+            commitment: 'confirmed',
+            filters: [
+                { memcmp: { offset: 0, bytes: MARKET_DISCRIMINATOR.toString('base64') } },
+            ],
+        });
+    }
+    catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('Base58') || msg.includes('Invalid')) {
+            const all = await connection.getProgramAccounts(PROGRAM_ID, { commitment: 'confirmed' });
+            accounts = all.filter((a) => a.account.data.length >= 8 &&
+                MARKET_DISCRIMINATOR.equals(Buffer.from(a.account.data.subarray(0, 8))));
+        }
+        else {
+            throw e;
+        }
+    }
     const coder = program.coder;
     const out = [];
     for (const { pubkey, account } of accounts) {

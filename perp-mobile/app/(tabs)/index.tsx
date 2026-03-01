@@ -9,7 +9,7 @@ import { MarketListRow } from '@/components/MarketListRow';
 import { MOCK_MARKETS } from '@/constants/mockData';
 import type { MarketItem } from '@/types/market';
 import { useWallet } from '@/lib/solana/WalletContext';
-import { useApiMarkets, useApiUser } from '@/hooks/usePerpDex';
+import { useIndexerMarkets, useIndexerUser } from '@/lib/solana/IndexerContext';
 import { colors, spacing, typography } from '@/constants/Theme';
 
 const QUOTE_OPTIONS = ['USDT', 'USDC', 'USD', 'BTC'];
@@ -38,8 +38,8 @@ function apiMarketToItem(m: { symbol: string; lastOraclePrice: number }): Market
 export default function HomeScreen() {
   const router = useRouter();
   const { publicKey, connected, connect, disconnect } = useWallet();
-  const { markets: apiMarkets, loading: marketsLoading } = useApiMarkets();
-  const { collateral } = useApiUser(publicKey);
+  const apiMarkets = useIndexerMarkets();
+  const { collateral } = useIndexerUser(publicKey);
 
   const [search, setSearch] = useState('');
   const [quote, setQuote] = useState('USDT');
@@ -50,6 +50,7 @@ export default function HomeScreen() {
     [apiMarkets]
   );
   const listSource = chainMarkets.length > 0 ? chainMarkets : MOCK_MARKETS;
+  const marketsLoading = false;
 
   const filteredMarkets = useMemo(() => {
     let list = listSource.filter((m) => m.quote === quote || quote === 'USDT');

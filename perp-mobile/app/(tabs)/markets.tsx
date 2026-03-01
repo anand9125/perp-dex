@@ -5,17 +5,40 @@ import { useRouter } from 'expo-router';
 import { SearchBar } from '@/components/SearchBar';
 import { MarketListRow } from '@/components/MarketListRow';
 import { MOCK_MARKETS } from '@/constants/mockData';
+import { useIndexerMarkets } from '@/lib/solana/IndexerContext';
+import type { MarketItem } from '@/types/market';
 import { colors, spacing, typography } from '@/constants/Theme';
 
 const QUOTE_OPTIONS = ['USDT', 'USDC', 'USD', 'BTC'];
 
+function apiMarketToItem(m: { symbol: string; lastOraclePrice: number }): MarketItem {
+  const base = m.symbol.replace(/-PERP$/, '');
+  const price = String(m.lastOraclePrice);
+  return {
+    symbol: m.symbol,
+    name: `${base} Perpetual`,
+    base,
+    quote: 'USDT',
+    price,
+    priceUsd: `$${price}`,
+    change24h: 0,
+    volume24h: '—',
+    leverage: '10x',
+    high24h: price,
+    low24h: price,
+  };
+}
+
 export default function MarketsScreen() {
   const router = useRouter();
+  const indexerMarkets = useIndexerMarkets();
+  const chainMarkets = useMemo(() => indexerMarkets.map(apiMarketToItem), [indexerMarkets]);
+  const listSource = chainMarkets.length > 0 ? chainMarkets : MOCK_MARKETS;
   const [search, setSearch] = useState('');
   const [quote, setQuote] = useState('USDT');
 
   const filteredMarkets = useMemo(() => {
-    let list = MOCK_MARKETS;
+    let list = listSource;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((m) => m.symbol.toLowerCase().includes(q) || m.base.toLowerCase().includes(q));
@@ -24,7 +47,7 @@ export default function MarketsScreen() {
       list = list.filter((m) => m.quote === quote);
     }
     return list;
-  }, [search, quote]);
+  }, [search, quote, listSource]);
 
   const handleMarketPress = (symbol: string) => {
     router.push(`/market/${encodeURIComponent(symbol)}`);
